@@ -353,28 +353,32 @@ else
                                      @onpointerdown="@(() => StartMove(c, "forward"))"
                                      @onpointerup="@(() => StopMove(c, "forward"))"
                                      @onpointerleave="@(() => StopMove(c, "forward"))"
+                                     @onpointercancel="@(() => StopMove(c, "forward"))"
                                      @oncontextmenu:preventDefault>▲</div>
                                 <span></span>
                                 <div class="ac-dbtn @(Held(c.Pid, "left"))"
                                      @onpointerdown="@(() => StartMove(c, "left"))"
                                      @onpointerup="@(() => StopMove(c, "left"))"
                                      @onpointerleave="@(() => StopMove(c, "left"))"
+                                     @onpointercancel="@(() => StopMove(c, "left"))"
                                      @oncontextmenu:preventDefault>◀</div>
                                 <div class="ac-dbtn stop" @onclick="@(() => HardStop(c))">■</div>
                                 <div class="ac-dbtn @(Held(c.Pid, "right"))"
                                      @onpointerdown="@(() => StartMove(c, "right"))"
                                      @onpointerup="@(() => StopMove(c, "right"))"
                                      @onpointerleave="@(() => StopMove(c, "right"))"
+                                     @onpointercancel="@(() => StopMove(c, "right"))"
                                      @oncontextmenu:preventDefault>▶</div>
                                 <span></span>
                                 <div class="ac-dbtn @(Held(c.Pid, "back"))"
                                      @onpointerdown="@(() => StartMove(c, "back"))"
                                      @onpointerup="@(() => StopMove(c, "back"))"
                                      @onpointerleave="@(() => StopMove(c, "back"))"
+                                     @onpointercancel="@(() => StopMove(c, "back"))"
                                      @oncontextmenu:preventDefault>▼</div>
                                 <span></span>
                             </div>
-                            <div class="ac-dnote">hold to move · ◀▶ turn · ■ stop @(c.MacroRunning ? "· stop the macro first — nav will fight you" : "")</div>
+                            <div class="ac-dnote">hold to move · ◀▶ turn · ■ stop @(c.MacroRunning ? "· stop the macro first — nav & combat facing will fight you" : "")</div>
                         }
                     </div>
                 }
@@ -474,14 +478,13 @@ else
 
     private void OnSuspended()
     {
-        // App backgrounded: any d-pad button held right now won't get its pointer-up, so release every
-        // held key (a stop per held pid) before we lose the foreground. Safe to send even if none held.
-        if (_held.Count == 0 || _result?.Payload?.Clients is not { } clients) return;
-        foreach (var (pid, _) in _held.ToArray())
-        {
-            var c = clients.FirstOrDefault(x => x.Pid == pid);
-            if (c is not null) SendMove(c, "stop", false);
-        }
+        // App backgrounding: any held button won't get its pointer-up, so release every held pid now.
+        // Best-effort — the POST may not flush before iOS freezes us, which is exactly why the plugin
+        // dead-man's switch (fed by the keepalive) is the real guarantee. Send by pid, no _result
+        // lookup, so this is safe to run off the renderer thread (the iOS lifecycle thread).
+        if (_held.Count == 0) return;
+        foreach (var pid in _held.Keys.ToArray())
+            SendMove(pid, "stop", false);
         _held.Clear();
     }
 
@@ -527,7 +530,7 @@ else
     private void StartMove(AcClientStatus c, string dir)
     {
         _held[c.Pid] = dir;
-        SendMove(c, dir, true);
+        SendMove(c.Pid, dir, true);
     }
 
     private void StopMove(AcClientStatus c, string dir)
@@ -536,13 +539,33 @@ else
         // on a button we never pressed shouldn't wipe an active press elsewhere). Always send the
         // release — SetMotion(false)/SetAutoRun(false) is idempotent on the plugin side.
         if (_held.TryGetValue(c.Pid, out var d) && d == dir) _held.Remove(c.Pid);
-        SendMove(c, dir, false);
+        SendMove(c.Pid, dir, false);
     }
 
     private void HardStop(AcClientStatus c)
     {
         _held.Remove(c.Pid);
-        SendMove(c, "stop", false);
+        SendMove(c.Pid, "stop", false);
+    }
+
+    // Keepalive: while a direction is held we re-assert it on a heartbeat so the plugin's dead-man's
+    // switch stays fed. If anything cuts the held button off without a release (pointercancel, app
+    // force-kill, Wi-Fi drop, page nav, card unmount), the heartbeat stops and the plugin auto-stops
+    // ~1.2s later. This is the real runaway backstop — a single release POST can always be lost.
+    private const int KeepAliveMs = 350;
+    private async Task KeepAliveLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(KeepAliveMs));
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                if (_held.Count == 0) continue;
+                foreach (var (pid, dir) in _held.ToArray())     // re-send held direction(s) to feed the watchdog
+                    SendMove(pid, dir, true);
+            }
+        }
+        catch (OperationCanceledException) { /* disposed */ }
     }
 
     // Fire-and-forget (no per-press status/refresh — movement is high-frequency), but serialized
@@ -551,17 +574,31 @@ else
     // concurrent POSTs could otherwise race across connections — landing a stop *before* its start
     // and leaving the character moving. PostCommandAsync never throws, so the chain can't fault.
     private readonly Dictionary<int, Task> _moveChain = new();
-    private void SendMove(AcClientStatus c, string dir, bool start)
+    private void SendMove(int pid, string dir, bool start)
     {
         string action = start ? "moveStart" : "moveStop";
-        Task prev = _moveChain.TryGetValue(c.Pid, out var t) ? t : Task.CompletedTask;
-        _moveChain[c.Pid] = ChainSend(prev, c.Pid, action, dir);
+        Task prev = _moveChain.TryGetValue(pid, out var t) ? t : Task.CompletedTask;
+        _moveChain[pid] = ChainSend(prev, pid, action, dir);
     }
 
     private async Task ChainSend(Task prev, int pid, string action, string dir)
     {
         try { await prev; } catch { /* prior send never throws, but stay defensive */ }
         await Status.PostCommandAsync(_url, _token, pid, action, dir);
+    }
+
+    // A pid can leave the feed (box relaunched → new pid, or dropped on a transient agent error) while
+    // a button is held. The held element is unmounted with no pointer-up, so without this the keepalive
+    // loop would keep feeding the watchdog and sustain the very runaway it guards against. Release +
+    // forget any held/queued pid no longer present, so the heartbeat stops and the plugin can self-stop.
+    private void ReconcileHeldWithFeed()
+    {
+        var live = _result?.Payload?.Clients;
+        if (live is null) return;
+        foreach (var pid in _held.Keys.ToArray())
+            if (!live.Any(x => x.Pid == pid)) { SendMove(pid, "stop", false); _held.Remove(pid); }
+        foreach (var pid in _moveChain.Keys.ToArray())          // also prune completed chains for gone pids
+            if (!_held.ContainsKey(pid) && !live.Any(x => x.Pid == pid)) _moveChain.Remove(pid);
     }
 
     protected override async Task OnInitializedAsync()
@@ -576,6 +613,7 @@ else
         StreamLifecycle.Suspended += OnSuspended;
         _cts = new CancellationTokenSource();
         _ = PollLoopAsync(_cts.Token);
+        _ = KeepAliveLoopAsync(_cts.Token);
     }
 
     private async Task PollLoopAsync(CancellationToken ct)
@@ -602,6 +640,7 @@ else
             if (_disposed || ct.IsCancellationRequested
                 || !string.Equals(requestedUrl, _url, StringComparison.Ordinal)) return;
             _result = r;
+            if (_held.Count > 0) ReconcileHeldWithFeed();   // release any held pid that just left the feed
             await InvokeAsync(StateHasChanged);
         }
         catch (OperationCanceledException) { /* cancelled (page disposed / config change) */ }
@@ -728,6 +767,11 @@ else
     public ValueTask DisposeAsync()
     {
         _disposed = true;
+        // Page being torn down (nav away / back) while a button is held fires no pointer-up — release
+        // every held pid before we cancel the loops. Fire-and-forget; the plugin dead-man backstops it.
+        foreach (var pid in _held.Keys.ToArray())
+            SendMove(pid, "stop", false);
+        _held.Clear();
         StreamLifecycle.Resumed -= OnResumed;
         StreamLifecycle.Suspended -= OnSuspended;
         _cts?.Cancel();

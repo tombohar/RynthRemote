@@ -545,10 +545,24 @@ else
         SendMove(c, "stop", false);
     }
 
-    // Fire-and-forget: movement is high-frequency, so no per-press status message / refresh (unlike
-    // SendCommand). PostCommandAsync never throws (returns Fail), so the discarded task is safe.
+    // Fire-and-forget (no per-press status/refresh — movement is high-frequency), but serialized
+    // PER PID: each send awaits the previous one so the agent receives start/stop in submit order.
+    // The agent timestamps on receipt (Ticks-prefixed filename the plugin sorts on), and two
+    // concurrent POSTs could otherwise race across connections — landing a stop *before* its start
+    // and leaving the character moving. PostCommandAsync never throws, so the chain can't fault.
+    private readonly Dictionary<int, Task> _moveChain = new();
     private void SendMove(AcClientStatus c, string dir, bool start)
-        => _ = Status.PostCommandAsync(_url, _token, c.Pid, start ? "moveStart" : "moveStop", dir);
+    {
+        string action = start ? "moveStart" : "moveStop";
+        Task prev = _moveChain.TryGetValue(c.Pid, out var t) ? t : Task.CompletedTask;
+        _moveChain[c.Pid] = ChainSend(prev, c.Pid, action, dir);
+    }
+
+    private async Task ChainSend(Task prev, int pid, string action, string dir)
+    {
+        try { await prev; } catch { /* prior send never throws, but stay defensive */ }
+        await Status.PostCommandAsync(_url, _token, pid, action, dir);
+    }
 
     protected override async Task OnInitializedAsync()
     {

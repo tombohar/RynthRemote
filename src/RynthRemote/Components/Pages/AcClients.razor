@@ -482,10 +482,14 @@ else
         // Best-effort — the POST may not flush before iOS freezes us, which is exactly why the plugin
         // dead-man's switch (fed by the keepalive) is the real guarantee. Send by pid, no _result
         // lookup, so this is safe to run off the renderer thread (the iOS lifecycle thread).
-        if (_held.Count == 0) return;
-        foreach (var pid in _held.Keys.ToArray())
-            SendMove(pid, "stop", false);
-        _held.Clear();
+        int[] pids;
+        lock (_moveLock)
+        {
+            if (_held.Count == 0) return;
+            pids = _held.Keys.ToArray();
+            _held.Clear();
+        }
+        foreach (var pid in pids) SendMove(pid, "stop", false);
     }
 
     private readonly HashSet<int> _closePending = new();         // pids armed for a confirm-close
@@ -524,35 +528,49 @@ else
     // ── Movement d-pad (hold-to-move) ────────────────────────────────────────
     private readonly HashSet<int> _showDrive = new();            // pids whose d-pad is open
     private void ToggleDrive(int pid) { if (!_showDrive.Add(pid)) _showDrive.Remove(pid); }
-    private readonly Dictionary<int, string> _held = new();      // pid → direction currently pressed
-    private string Held(int pid, string dir) => _held.TryGetValue(pid, out var d) && d == dir ? "held" : "";
+    // pid → the SET of directions currently held. A set (not one slot) so you can run AND steer at the
+    // same time, with each held direction independently kept alive + released. _moveLock guards _held /
+    // _moveChain because the keepalive timer thread touches them alongside the renderer thread.
+    private readonly Dictionary<int, HashSet<string>> _held = new();
+    private readonly object _moveLock = new();
+    private string Held(int pid, string dir)
+    {
+        lock (_moveLock) return _held.TryGetValue(pid, out var s) && s.Contains(dir) ? "held" : "";
+    }
 
     private void StartMove(AcClientStatus c, string dir)
     {
-        _held[c.Pid] = dir;
+        lock (_moveLock)
+        {
+            if (!_held.TryGetValue(c.Pid, out var s)) _held[c.Pid] = s = new();
+            s.Add(dir);
+        }
         SendMove(c.Pid, dir, true);
     }
 
     private void StopMove(AcClientStatus c, string dir)
     {
-        // Only clear the held marker if this is the direction we think is down (a stray pointerleave
-        // on a button we never pressed shouldn't wipe an active press elsewhere). Always send the
-        // release — SetMotion(false)/SetAutoRun(false) is idempotent on the plugin side.
-        if (_held.TryGetValue(c.Pid, out var d) && d == dir) _held.Remove(c.Pid);
-        SendMove(c.Pid, dir, false);
+        bool nowEmpty = false;
+        lock (_moveLock)
+            if (_held.TryGetValue(c.Pid, out var s) && s.Remove(dir) && s.Count == 0) { _held.Remove(c.Pid); nowEmpty = true; }
+        // Releasing the LAST held direction → send a full "stop": it releases everything AND disarms the
+        // plugin dead-man immediately, so the watchdog can't fire a delayed stop later that would clobber
+        // the bot if it re-took control. A non-last release just drops that one direction (others keep going).
+        SendMove(c.Pid, nowEmpty ? "stop" : dir, false);
     }
 
     private void HardStop(AcClientStatus c)
     {
-        _held.Remove(c.Pid);
+        lock (_moveLock) _held.Remove(c.Pid);
         SendMove(c.Pid, "stop", false);
     }
 
-    // Keepalive: while a direction is held we re-assert it on a heartbeat so the plugin's dead-man's
-    // switch stays fed. If anything cuts the held button off without a release (pointercancel, app
-    // force-kill, Wi-Fi drop, page nav, card unmount), the heartbeat stops and the plugin auto-stops
-    // ~1.2s later. This is the real runaway backstop — a single release POST can always be lost.
-    private const int KeepAliveMs = 350;
+    // Keepalive: while a direction is held we re-assert EACH held direction on a heartbeat so the
+    // plugin's dead-man's switch stays fed. If anything cuts a held button off without a release
+    // (pointercancel, app force-kill, Wi-Fi drop, page nav, card unmount), the heartbeat stops and the
+    // plugin auto-stops shortly after. This is the real runaway backstop — a single release POST can
+    // always be lost. Sends are coalesced (see SendMove) so a stalled POST can't starve the heartbeat.
+    private const int KeepAliveMs = 300;
     private async Task KeepAliveLoopAsync(CancellationToken ct)
     {
         try
@@ -560,31 +578,42 @@ else
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(KeepAliveMs));
             while (await timer.WaitForNextTickAsync(ct))
             {
-                if (_held.Count == 0) continue;
-                foreach (var (pid, dir) in _held.ToArray())     // re-send held direction(s) to feed the watchdog
-                    SendMove(pid, dir, true);
+                (int pid, string dir)[] held;
+                lock (_moveLock)
+                {
+                    if (_held.Count == 0) continue;
+                    held = _held.SelectMany(kv => kv.Value.Select(d => (kv.Key, d))).ToArray();
+                }
+                foreach (var (pid, dir) in held)
+                    SendMove(pid, dir, true, coalesce: true);   // skipped if a send for this pid is still in flight
             }
         }
         catch (OperationCanceledException) { /* disposed */ }
     }
 
-    // Fire-and-forget (no per-press status/refresh — movement is high-frequency), but serialized
-    // PER PID: each send awaits the previous one so the agent receives start/stop in submit order.
-    // The agent timestamps on receipt (Ticks-prefixed filename the plugin sorts on), and two
-    // concurrent POSTs could otherwise race across connections — landing a stop *before* its start
-    // and leaving the character moving. PostCommandAsync never throws, so the chain can't fault.
+    // Sends serialize PER PID so a release can't be overtaken by a stale keepalive (the agent stamps on
+    // receipt and the plugin applies in that order). But they must NOT back-pressure: a stalled POST
+    // can't be allowed to stack keepalives behind it — that starves the plugin watchdog (→ false stop),
+    // then the queued burst flushes and *resumes* motion you released. So every send has a SHORT timeout
+    // (well under the dead-man window) and keepalives COALESCE: a keepalive is dropped while this pid
+    // still has a send in flight (the next tick retries). Explicit press/release always go through.
+    private const int MoveSendTimeoutMs = 1000;
     private readonly Dictionary<int, Task> _moveChain = new();
-    private void SendMove(int pid, string dir, bool start)
+    private void SendMove(int pid, string dir, bool start, bool coalesce = false)
     {
-        string action = start ? "moveStart" : "moveStop";
-        Task prev = _moveChain.TryGetValue(pid, out var t) ? t : Task.CompletedTask;
-        _moveChain[pid] = ChainSend(prev, pid, action, dir);
+        lock (_moveLock)
+        {
+            if (coalesce && _moveChain.TryGetValue(pid, out var cur) && !cur.IsCompleted) return;
+            Task prev = _moveChain.TryGetValue(pid, out var t) ? t : Task.CompletedTask;
+            _moveChain[pid] = ChainSend(prev, pid, start ? "moveStart" : "moveStop", dir);
+        }
     }
 
     private async Task ChainSend(Task prev, int pid, string action, string dir)
     {
         try { await prev; } catch { /* prior send never throws, but stay defensive */ }
-        await Status.PostCommandAsync(_url, _token, pid, action, dir);
+        using var cts = new CancellationTokenSource(MoveSendTimeoutMs);   // bound a stalled POST well under the watchdog
+        await Status.PostCommandAsync(_url, _token, pid, action, dir, cts.Token);
     }
 
     // A pid can leave the feed (box relaunched → new pid, or dropped on a transient agent error) while
@@ -595,10 +624,15 @@ else
     {
         var live = _result?.Payload?.Clients;
         if (live is null) return;
-        foreach (var pid in _held.Keys.ToArray())
-            if (!live.Any(x => x.Pid == pid)) { SendMove(pid, "stop", false); _held.Remove(pid); }
-        foreach (var pid in _moveChain.Keys.ToArray())          // also prune completed chains for gone pids
-            if (!_held.ContainsKey(pid) && !live.Any(x => x.Pid == pid)) _moveChain.Remove(pid);
+        int[] goneHeld;
+        lock (_moveLock)
+        {
+            goneHeld = _held.Keys.Where(pid => !live.Any(x => x.Pid == pid)).ToArray();
+            foreach (var pid in goneHeld) _held.Remove(pid);
+            foreach (var pid in _moveChain.Keys.ToArray())      // prune completed chains for gone pids
+                if (!_held.ContainsKey(pid) && !live.Any(x => x.Pid == pid)) _moveChain.Remove(pid);
+        }
+        foreach (var pid in goneHeld) SendMove(pid, "stop", false);
     }
 
     protected override async Task OnInitializedAsync()
@@ -769,9 +803,9 @@ else
         _disposed = true;
         // Page being torn down (nav away / back) while a button is held fires no pointer-up — release
         // every held pid before we cancel the loops. Fire-and-forget; the plugin dead-man backstops it.
-        foreach (var pid in _held.Keys.ToArray())
-            SendMove(pid, "stop", false);
-        _held.Clear();
+        int[] pids;
+        lock (_moveLock) { pids = _held.Keys.ToArray(); _held.Clear(); }
+        foreach (var pid in pids) SendMove(pid, "stop", false);
         StreamLifecycle.Resumed -= OnResumed;
         StreamLifecycle.Suspended -= OnSuspended;
         _cts?.Cancel();

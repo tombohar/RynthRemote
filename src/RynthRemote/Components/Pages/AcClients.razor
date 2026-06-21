@@ -39,6 +39,7 @@
     .ac-pill.ac-macro.on { background:#f87171; color:#3a0b0b; }
     .ac-sel { font-size:.72rem; padding:.18rem .3rem; border-radius:6px; border:1px solid var(--border); background:var(--surface-2); color:inherit; flex:1 1 30%; min-width:0; }
     .ac-cmd-msg { font-size:.7rem; color:var(--muted); margin-top:.25rem; }
+    .ac-pill.ac-danger { background:#f87171; color:#3a0b0b; border-color:transparent; font-weight:700; }
     .ac-gear { margin-top:.4rem; }
     .ac-gear-h { font-size:.74rem; background:none; border:none; color:var(--muted); cursor:pointer; padding:.1rem 0; }
     .ac-gear-list { display:flex; flex-direction:column; gap:.12rem; margin-top:.2rem; }
@@ -287,6 +288,15 @@ else
                             <button class="ac-pill" @onclick="@(() => SendCommand(c, "clearBusy", "true"))">clear busy</button>
                             <button class="ac-pill" @onclick="@(() => SendCommand(c, "forceRebuff", "true"))">force rebuff</button>
                             <button class="ac-pill" @onclick="@(() => SendCommand(c, "cancelRebuff", "true"))">cancel</button>
+                            <button class="ac-pill @(c.UiHidden ? "on" : "")" @onclick="@(() => SendCommand(c, "hideUi", c.UiHidden ? "false" : "true"))">@(c.UiHidden ? "Show UI" : "Hide UI")</button>
+                            @if (_closePending.Contains(c.Pid))
+                            {
+                                <button class="ac-pill ac-danger" @onclick="@(() => ConfirmClose(c))">Confirm close?</button>
+                            }
+                            else
+                            {
+                                <button class="ac-pill" @onclick="@(() => ArmClose(c.Pid))">Close</button>
+                            }
                         </div>
                         @if (_cmdMsg.TryGetValue(c.Pid, out var cm) && !string.IsNullOrEmpty(cm))
                         {
@@ -386,6 +396,20 @@ else
         foreach (int pid in _streaming)                          // iOS dropped the streams — reconnect each
             _epochByPid[pid] = (_epochByPid.TryGetValue(pid, out int e) ? e : 0) + 1;
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    private readonly HashSet<int> _closePending = new();         // pids armed for a confirm-close
+    private async Task ArmClose(int pid)
+    {
+        _closePending.Add(pid);
+        StateHasChanged();
+        try { await Task.Delay(4000); } catch { }
+        if (_closePending.Remove(pid) && !_disposed) await InvokeAsync(StateHasChanged);
+    }
+    private async Task ConfirmClose(AcClientStatus c)
+    {
+        _closePending.Remove(c.Pid);
+        await SendCommand(c, "closeClient", "true");
     }
 
     private readonly HashSet<int> _showGear = new();             // pids whose gear list is expanded

@@ -83,6 +83,8 @@ public sealed class AcClientStatus
     public int SecsSinceLastKill { get; set; } = -1;
     /// Main-pack empty slots; -1 = unknown.
     public int FreeSlots { get; set; } = -1;
+    /// True when the in-game RynthCore/RynthAi UI is hidden (remote "Hide UI").
+    public bool UiHidden { get; set; }
     /// Total scarab casting components in inventory; -1 = unknown.
     public int Scarabs { get; set; } = -1;
     /// Total prismatic tapers in inventory; -1 = unknown.

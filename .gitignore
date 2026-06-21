@@ -11,8 +11,8 @@
 *.ipa
 payload/
 pubrepo/
-apps.json
 *-version.txt
+# NOTE: apps.json is NOT ignored — it's the SideStore source feed, committed by CI.
 
 # OS
 .DS_Store

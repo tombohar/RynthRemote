@@ -12,6 +12,9 @@ on:
       - '.github/workflows/ios-build.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write   # publish a Release + commit apps.json back to this repo (no PAT needed)
+
 jobs:
   build-ios:
     runs-on: macos-15
@@ -76,13 +79,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Auto-publish to a public SideStore source. Skips cleanly until RELEASES_TOKEN is set.
-      - name: Publish to public release feed (SideStore source)
+      # Auto-publish to this repo's Releases + the apps.json SideStore source (built-in token).
+      - name: Publish to release feed (SideStore source)
         env:
-          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: |
-          if [ -z "${RELEASES_TOKEN:-}" ]; then
-            echo "RELEASES_TOKEN not set — skipping public publish (set the secret to enable one-tap updates)."
-            exit 0
-          fi
-          bash tools/publish-release.sh "$(cat RynthRemote-version.txt)" RynthRemote-unsigned.ipa
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash tools/publish-release.sh "$(cat RynthRemote-version.txt)" RynthRemote-unsigned.ipa

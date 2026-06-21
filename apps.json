@@ -1,0 +1,25 @@
+{
+  "name": "RynthRemote",
+  "identifier": "com.tombohar.rynthremote.source",
+  "apps": [
+    {
+      "name": "RynthRemote",
+      "bundleIdentifier": "com.tombohar.rynthremote",
+      "developerName": "Tom Bohar",
+      "subtitle": "AC multibox monitor + remote",
+      "localizedDescription": "Monitor and remote-control your Asheron's Call multi-boxes from your phone, via the RynthCore StatusAgent on your PC. Live health, kills/XP, components, equipped gear with appraisals, and one-tap toggles (nav/combat/buffing), profile switching, and utilities.",
+      "iconURL": "https://raw.githubusercontent.com/tombohar/RynthRemote/main/icon.png",
+      "tintColor": "6366f1",
+      "category": "utilities",
+      "version": "1.0.1",
+      "versionDate": "2026-06-21",
+      "versionDescription": "Automated build 1.0.1.",
+      "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.1/RynthRemote.ipa",
+      "size": 5708140,
+      "versions": [
+        { "version": "1.0.1", "date": "2026-06-21", "localizedDescription": "Automated build 1.0.1.", "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.1/RynthRemote.ipa", "size": 5708140, "minOSVersion": "15.0" }
+      ]
+    }
+  ],
+  "news": []
+}

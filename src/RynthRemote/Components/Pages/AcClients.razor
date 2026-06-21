@@ -116,19 +116,6 @@ else
         </span>
     </div>
 
-    @if (_streaming.Count > 0)
-    {
-        <div class="ac-qsel">
-            <span class="lbl">Live view:</span>
-            @for (int i = 0; i < Presets.Length; i++)
-            {
-                int idx = i;
-                <button class="ac-pill @(_presetIdx == idx ? "on" : "")" @onclick="@(() => SetPreset(idx))">@Presets[idx].Label</button>
-            }
-            <span class="lbl" style="margin-left:auto">@DataRateText()</span>
-        </div>
-    }
-
     <div class="ac-grid">
         @foreach (var c in clients.OrderByDescending(c => !c.Healthy).ThenBy(c => c.Character))
         {
@@ -164,6 +151,14 @@ else
                 {
                     <div class="ac-stream">
                         <img src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" />
+                    </div>
+                    <div class="ac-qsel">
+                        @for (int i = 0; i < Presets.Length; i++)
+                        {
+                            int idx = i; int pid = c.Pid;
+                            <button class="ac-pill @(PresetFor(pid) == idx ? "on" : "")" @onclick="@(() => SetPreset(pid, idx))">@Presets[idx].Label</button>
+                        }
+                        <span class="lbl" style="margin-left:auto">@DataRateText(c.Pid)</span>
                     </div>
                 }
 
@@ -330,9 +325,10 @@ else
     private bool _showControls = true;
     private readonly Dictionary<int, string?> _cmdMsg = new();   // per-pid transient command feedback
     private readonly HashSet<int> _streaming = new();            // pids with a live MJPEG view open
-    private int _streamEpoch;                                    // bumped on resume / quality change -> reconnect
-    private double _frameKb;                                     // measured frame size at the current preset
-    private int _presetIdx = 1;                                  // default: Balanced
+    private readonly Dictionary<int, int> _presetByPid = new();  // per-client quality/fps preset
+    private readonly Dictionary<int, int> _epochByPid = new();   // per-client reconnect token (resume / quality change)
+    private readonly Dictionary<int, double> _frameKbByPid = new(); // measured frame size per client
+    private int _defaultPreset = 1;                              // remembered, used for new streams
     private const string PresetKey = "ac.stream.preset";
 
     private sealed record StreamPreset(string Label, int Fps, int Q, int W);
@@ -343,10 +339,13 @@ else
         new("Smooth", 12, 60, 0),     // native size, full motion (Wi-Fi)
     };
 
+    private int PresetFor(int pid) => _presetByPid.TryGetValue(pid, out int v) ? v : _defaultPreset;
+
     private string StreamSrc(int pid)
     {
-        var p = Presets[_presetIdx];
-        return AcStatusClient.BuildStreamUrl(_url, pid, _token, p.Fps, p.Q, p.W, _streamEpoch);
+        var p = Presets[PresetFor(pid)];
+        int epoch = _epochByPid.TryGetValue(pid, out int e) ? e : 0;
+        return AcStatusClient.BuildStreamUrl(_url, pid, _token, p.Fps, p.Q, p.W, epoch);
     }
 
     private async Task ToggleStream(int pid)
@@ -355,37 +354,37 @@ else
         await MeasureFrameAsync(pid);
     }
 
-    private async Task SetPreset(int idx)
+    private async Task SetPreset(int pid, int idx)
     {
-        if (idx == _presetIdx || idx < 0 || idx >= Presets.Length) return;
-        _presetIdx = idx;
-        _frameKb = 0;
-        _streamEpoch++;   // reconnect every open stream at the new quality
+        if (idx < 0 || idx >= Presets.Length || PresetFor(pid) == idx) return;
+        _presetByPid[pid] = idx;
+        _defaultPreset = idx;                                    // remember for the next stream you open
+        _frameKbByPid.Remove(pid);
+        _epochByPid[pid] = (_epochByPid.TryGetValue(pid, out int e) ? e : 0) + 1;  // reconnect just this stream
         try { await SettingsSvc.SetAsync(PresetKey, idx.ToString()); } catch { }
         StateHasChanged();
-        var any = _streaming.FirstOrDefault();
-        if (any != 0) await MeasureFrameAsync(any);
+        await MeasureFrameAsync(pid);
     }
 
     private async Task MeasureFrameAsync(int pid)
     {
-        var p = Presets[_presetIdx];
+        var p = Presets[PresetFor(pid)];
         int bytes = await Status.MeasureFrameBytesAsync(_url, _token, pid, p.Q, p.W);
-        if (bytes > 0) { _frameKb = bytes / 1024.0; if (!_disposed) await InvokeAsync(StateHasChanged); }
+        if (bytes > 0) { _frameKbByPid[pid] = bytes / 1024.0; if (!_disposed) await InvokeAsync(StateHasChanged); }
     }
 
-    private string DataRateText()
+    private string DataRateText(int pid)
     {
-        if (_frameKb <= 0) return "measuring…";
-        double kbs = _frameKb * Presets[_presetIdx].Fps;
-        double totalMbHr = kbs * Math.Max(1, _streaming.Count) * 3600 / 1024;
-        return $"~{kbs:F0} KB/s/box · ~{totalMbHr:F0} MB/hr";
+        if (!_frameKbByPid.TryGetValue(pid, out double kb) || kb <= 0) return "measuring…";
+        double kbs = kb * Presets[PresetFor(pid)].Fps;
+        return $"~{kbs:F0} KB/s · ~{kbs * 3600 / 1024:F0} MB/hr";
     }
 
     private void OnResumed()
     {
         if (_streaming.Count == 0) return;
-        _streamEpoch++;                       // iOS dropped the stream(s) in the background — reconnect
+        foreach (int pid in _streaming)                          // iOS dropped the streams — reconnect each
+            _epochByPid[pid] = (_epochByPid.TryGetValue(pid, out int e) ? e : 0) + 1;
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -401,7 +400,7 @@ else
         _urlEdit = _url;
         _tokenEdit = _token ?? "";
         if (int.TryParse(await SettingsSvc.GetAsync(PresetKey, "1"), out int pi))
-            _presetIdx = Math.Clamp(pi, 0, Presets.Length - 1);
+            _defaultPreset = Math.Clamp(pi, 0, Presets.Length - 1);
         StreamLifecycle.Resumed += OnResumed;
         _cts = new CancellationTokenSource();
         _ = PollLoopAsync(_cts.Token);

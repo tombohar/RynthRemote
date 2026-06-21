@@ -19,6 +19,9 @@
     .ac-bar > span { display:block; height:100%; }
     .ac-vlabel { display:flex; justify-content:space-between; font-size:.7rem; color:var(--muted); }
     .ac-doing { margin:.5rem 0 .25rem; font-size:.85rem; }
+    .ac-stream-bar { margin:.35rem 0 .25rem; }
+    .ac-stream { margin:.25rem 0 .45rem; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#000; }
+    .ac-stream img { width:100%; display:block; }
     .ac-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(56px,1fr)); gap:.3rem; margin:.4rem 0 .25rem; }
     .ac-stat { background:var(--surface-2); border-radius:6px; padding:.25rem .2rem; text-align:center; }
     .ac-stat .sv { font-weight:700; font-size:.9rem; font-variant-numeric:tabular-nums; line-height:1.1; }
@@ -114,7 +117,7 @@ else
     <div class="ac-grid">
         @foreach (var c in clients.OrderByDescending(c => !c.Healthy).ThenBy(c => c.Character))
         {
-            <div class="ac-card @(c.Healthy ? "" : "bad")">
+            <div class="ac-card @(c.Healthy ? "" : "bad")" @key="c.Pid">
                 <div class="ac-head">
                     <div>
                         <div class="ac-name">@c.DisplayName</div>
@@ -136,6 +139,18 @@ else
                     else { <span class="ac-sub">@(c.InWorld ? "In world" : "Not in world")</span> }
                     @if (!string.IsNullOrWhiteSpace(c.Target)) { <span class="ac-sub"> → @c.Target</span> }
                 </div>
+
+                <div class="ac-stream-bar">
+                    <button class="ac-pill @(_streaming.Contains(c.Pid) ? "on" : "")" @onclick="@(() => ToggleStream(c.Pid))">
+                        @(_streaming.Contains(c.Pid) ? "■ Stop stream" : "▶ Live view")
+                    </button>
+                </div>
+                @if (_streaming.Contains(c.Pid))
+                {
+                    <div class="ac-stream">
+                        <img src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" />
+                    </div>
+                }
 
                 @if (!string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase))
                 {
@@ -299,6 +314,10 @@ else
 
     private bool _showControls = true;
     private readonly Dictionary<int, string?> _cmdMsg = new();   // per-pid transient command feedback
+    private readonly HashSet<int> _streaming = new();            // pids with a live MJPEG view open
+    private void ToggleStream(int pid) { if (!_streaming.Add(pid)) _streaming.Remove(pid); }
+    private string StreamSrc(int pid) => AcStatusClient.BuildStreamUrl(_url, pid, _token);
+
     private readonly HashSet<int> _showGear = new();             // pids whose gear list is expanded
     private void ToggleGear(int pid) { if (!_showGear.Add(pid)) _showGear.Remove(pid); }
     private readonly HashSet<uint> _showItem = new();            // item ids whose appraisal is expanded

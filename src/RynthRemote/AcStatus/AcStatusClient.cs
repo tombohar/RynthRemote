@@ -129,6 +129,23 @@ public sealed class AcStatusClient : IAcStatusClient
         return ub.Uri;
     }
 
+    /// MJPEG live-view URL for one client: ".../stream?pid=N[&token=...]". Fed straight into an
+    /// &lt;img&gt; src — the token rides as a query param since img tags can't set headers.
+    public static string BuildStreamUrl(string baseUrl, int pid, string? token)
+    {
+        var status = BuildStatusUri(baseUrl);
+        var ub = new UriBuilder(status)
+        {
+            Path = status.AbsolutePath
+                .Replace("/status.json", "/stream", StringComparison.OrdinalIgnoreCase)
+                .Replace("/status", "/stream", StringComparison.OrdinalIgnoreCase),
+        };
+        string q = "pid=" + pid;
+        if (!string.IsNullOrWhiteSpace(token)) q += "&token=" + Uri.EscapeDataString(token.Trim());
+        ub.Query = q;
+        return ub.Uri.ToString();
+    }
+
     /// Accepts "host:8740", "http://host:8740", or a full ".../status[.json]" URL and
     /// normalises to the agent's /status route, preserving any query string (e.g. ?token=).
     public static Uri BuildStatusUri(string baseUrl)

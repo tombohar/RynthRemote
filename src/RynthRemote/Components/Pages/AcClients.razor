@@ -52,6 +52,12 @@
     .ac-chat-line { font-size:.74rem; line-height:1.25; word-break:break-word; }
     .ac-chat-send { display:flex; gap:.3rem; }
     .ac-chat-input { flex:1; min-width:0; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; color:inherit; padding:.3rem .45rem; font-size:.85rem; }
+    .ac-drive { margin-top:.4rem; }
+    .ac-dpad { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:.35rem; max-width:230px; margin:.3rem auto .1rem; touch-action:none; }
+    .ac-dbtn { display:flex; align-items:center; justify-content:center; aspect-ratio:1; font-size:1.5rem; line-height:1; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:inherit; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; cursor:pointer; }
+    .ac-dbtn:active, .ac-dbtn.held { background:var(--accent); border-color:var(--accent); color:#0b1220; }
+    .ac-dbtn.stop { font-size:1.05rem; color:var(--amber); }
+    .ac-dnote { font-size:.7rem; color:var(--muted); text-align:center; }
     .ac-appr { font-size:.7rem; margin:.15rem 0 .35rem .6rem; padding-left:.5rem; border-left:2px solid var(--border); display:flex; flex-direction:column; gap:.15rem; }
     .ac-appr b { font-weight:700; }
     .ac-appr .rb { color:var(--amber); margin-left:.4rem; }
@@ -334,6 +340,43 @@ else
                             </div>
                         }
                     </div>
+
+                    <div class="ac-drive">
+                        <button class="ac-gear-h" @onclick="@(() => ToggleDrive(c.Pid))">
+                            @(_showDrive.Contains(c.Pid) ? "▾" : "▸") Drive
+                        </button>
+                        @if (_showDrive.Contains(c.Pid))
+                        {
+                            <div class="ac-dpad">
+                                <span></span>
+                                <div class="ac-dbtn @(Held(c.Pid, "forward"))"
+                                     @onpointerdown="@(() => StartMove(c, "forward"))"
+                                     @onpointerup="@(() => StopMove(c, "forward"))"
+                                     @onpointerleave="@(() => StopMove(c, "forward"))"
+                                     @oncontextmenu:preventDefault>▲</div>
+                                <span></span>
+                                <div class="ac-dbtn @(Held(c.Pid, "left"))"
+                                     @onpointerdown="@(() => StartMove(c, "left"))"
+                                     @onpointerup="@(() => StopMove(c, "left"))"
+                                     @onpointerleave="@(() => StopMove(c, "left"))"
+                                     @oncontextmenu:preventDefault>◀</div>
+                                <div class="ac-dbtn stop" @onclick="@(() => HardStop(c))">■</div>
+                                <div class="ac-dbtn @(Held(c.Pid, "right"))"
+                                     @onpointerdown="@(() => StartMove(c, "right"))"
+                                     @onpointerup="@(() => StopMove(c, "right"))"
+                                     @onpointerleave="@(() => StopMove(c, "right"))"
+                                     @oncontextmenu:preventDefault>▶</div>
+                                <span></span>
+                                <div class="ac-dbtn @(Held(c.Pid, "back"))"
+                                     @onpointerdown="@(() => StartMove(c, "back"))"
+                                     @onpointerup="@(() => StopMove(c, "back"))"
+                                     @onpointerleave="@(() => StopMove(c, "back"))"
+                                     @oncontextmenu:preventDefault>▼</div>
+                                <span></span>
+                            </div>
+                            <div class="ac-dnote">hold to move · ◀▶ turn · ■ stop @(c.MacroRunning ? "· stop the macro first — nav will fight you" : "")</div>
+                        }
+                    </div>
                 }
 
                 <div class="ac-foot">
@@ -461,6 +504,38 @@ else
         StateHasChanged();
         await SendCommand(c, "sendChat", text);
     }
+
+    // ── Movement d-pad (hold-to-move) ────────────────────────────────────────
+    private readonly HashSet<int> _showDrive = new();            // pids whose d-pad is open
+    private void ToggleDrive(int pid) { if (!_showDrive.Add(pid)) _showDrive.Remove(pid); }
+    private readonly Dictionary<int, string> _held = new();      // pid → direction currently pressed
+    private string Held(int pid, string dir) => _held.TryGetValue(pid, out var d) && d == dir ? "held" : "";
+
+    private void StartMove(AcClientStatus c, string dir)
+    {
+        _held[c.Pid] = dir;
+        SendMove(c, dir, true);
+    }
+
+    private void StopMove(AcClientStatus c, string dir)
+    {
+        // Only clear the held marker if this is the direction we think is down (a stray pointerleave
+        // on a button we never pressed shouldn't wipe an active press elsewhere). Always send the
+        // release — SetMotion(false)/SetAutoRun(false) is idempotent on the plugin side.
+        if (_held.TryGetValue(c.Pid, out var d) && d == dir) _held.Remove(c.Pid);
+        SendMove(c, dir, false);
+    }
+
+    private void HardStop(AcClientStatus c)
+    {
+        _held.Remove(c.Pid);
+        SendMove(c, "stop", false);
+    }
+
+    // Fire-and-forget: movement is high-frequency, so no per-press status message / refresh (unlike
+    // SendCommand). PostCommandAsync never throws (returns Fail), so the discarded task is safe.
+    private void SendMove(AcClientStatus c, string dir, bool start)
+        => _ = Status.PostCommandAsync(_url, _token, c.Pid, start ? "moveStart" : "moveStop", dir);
 
     protected override async Task OnInitializedAsync()
     {

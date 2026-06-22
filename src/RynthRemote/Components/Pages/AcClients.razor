@@ -4,6 +4,7 @@
 @inject IAcStatusClient Status
 @inject SettingsStore SettingsSvc
 @inject IJSRuntime JS
+@inject IHdVideoLauncher HdLauncher
 @implements IAsyncDisposable
 
 <PageTitle>AC Clients - MicroManager</PageTitle>
@@ -159,6 +160,7 @@ else
                     <button class="ac-pill @(_streaming.Contains(c.Pid) ? "on" : "")" @onclick="@(() => ToggleStream(c.Pid))">
                         @(_streaming.Contains(c.Pid) ? "■ Stop stream" : "▶ Live view")
                     </button>
+                    <button class="ac-pill" @onclick="@(() => LaunchHd(c))" title="full-screen native H.264 (works remotely, ~60fps)">🎬 HD</button>
                 </div>
                 @if (_streaming.Contains(c.Pid))
                 {
@@ -433,7 +435,8 @@ else
         new("Saver", 2, 40, 480),     // ~tiny, for cellular (MJPEG)
         new("Balanced", 5, 50, 720),
         new("Smooth", 12, 60, 0),     // native size, full motion (Wi-Fi)
-        new("HD ⚡", 0, 0, 0, Hd: true), // WebRTC H.264 — low latency, "play" mode (Wi-Fi)
+        // HD is now the full-screen native H.264 view (the "🎬 HD" button), not an inline preset —
+        // WebRTC couldn't connect remotely (mDNS/ICE). The Hd-flag plumbing below stays dormant.
     };
 
     private static string VideoId(int pid) => $"ac-hd-{pid}";
@@ -452,6 +455,13 @@ else
     {
         if (!_streaming.Add(pid)) { _streaming.Remove(pid); return; }
         await MeasureFrameAsync(pid);
+    }
+
+    // Open the full-screen native H.264 view (WebSocket to the agent — works remotely over Tailscale).
+    private async Task LaunchHd(AcClientStatus c)
+    {
+        if (string.IsNullOrWhiteSpace(_url)) return;
+        await HdLauncher.LaunchAsync(_url, c.Pid, _token ?? "", c.DisplayName);
     }
 
     private async Task SetPreset(int pid, int idx)

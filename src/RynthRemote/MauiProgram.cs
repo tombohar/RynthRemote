@@ -30,11 +30,9 @@ public static class MauiProgram
 
         builder.Services.AddMauiBlazorWebView();
 
-        // HD video = a native AVSampleBufferDisplayLayer view (iOS) fed by the agent's WebSocket H.264.
-#if IOS
-        builder.ConfigureMauiHandlers(h => h.AddHandler<RynthRemote.Controls.HdVideoView, RynthRemote.Platforms.iOS.HdVideoViewHandler>());
-#endif
-        builder.Services.AddSingleton<IHdVideoLauncher, HdVideoLauncher>();
+        // HD video = a native AVSampleBufferDisplayLayer overlay (iOS) fed by the agent's WebSocket H.264,
+        // pinned inline to the card's slot (tracked from JS) with tap-to-expand.
+        builder.Services.AddSingleton<IHdVideoController, HdVideoController>();
 
         // Settings persisted via MAUI Preferences (the status URL + token). No database.
         builder.Services.AddSingleton<SettingsStore>();

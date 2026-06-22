@@ -55,4 +55,32 @@ window.rynthHd = {
     const c = this.conns[pid];
     if (c) { try { c.pc.close(); } catch (e) {} delete this.conns[pid]; }
   },
+
+  // ── Inline HD overlay tracking ──────────────────────────────────────────────────────────────
+  // Report the HD slot <div>'s viewport rect to C# each animation frame (only when it changes) so the
+  // native AVSampleBufferDisplayLayer overlay stays pinned to the card as the dashboard scrolls.
+  _trackRaf: 0, _trackRef: null, _trackLast: "",
+  startTrack(dotnetRef, slotId) {
+    this.stopTrack();
+    this._trackRef = dotnetRef; this._trackLast = "";
+    const self = this;
+    const loop = () => {
+      if (!self._trackRef) return;
+      const el = document.getElementById(slotId);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        const cur = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+        if (cur !== self._trackLast) {
+          self._trackLast = cur;
+          try { self._trackRef.invokeMethodAsync('OnHdRect', r.left, r.top, r.width, r.height); } catch (e) {}
+        }
+      }
+      self._trackRaf = requestAnimationFrame(loop);
+    };
+    self._trackRaf = requestAnimationFrame(loop);
+  },
+  stopTrack() {
+    if (this._trackRaf) cancelAnimationFrame(this._trackRaf);
+    this._trackRaf = 0; this._trackRef = null;
+  },
 };

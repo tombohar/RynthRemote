@@ -4,7 +4,7 @@
 @inject IAcStatusClient Status
 @inject SettingsStore SettingsSvc
 @inject IJSRuntime JS
-@inject IHdVideoLauncher HdLauncher
+@inject IHdVideoController HdController
 @implements IAsyncDisposable
 
 <PageTitle>AC Clients - MicroManager</PageTitle>
@@ -24,6 +24,7 @@
     .ac-stream-bar { margin:.35rem 0 .25rem; }
     .ac-stream { margin:.25rem 0 .45rem; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#000; aspect-ratio:16/10; }
     .ac-stream img, .ac-stream video { width:100%; height:100%; object-fit:contain; display:block; background:#000; }
+    .ac-hd-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#5b6b86; font-size:.8rem; }
     .ac-qsel { display:flex; gap:.3rem; align-items:center; flex-wrap:wrap; margin:.2rem 0 .6rem; padding:.4rem .5rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
     .ac-qsel .lbl { font-size:.72rem; color:var(--muted); }
     .ac-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(56px,1fr)); gap:.3rem; margin:.4rem 0 .25rem; }
@@ -160,8 +161,12 @@ else
                     <button class="ac-pill @(_streaming.Contains(c.Pid) ? "on" : "")" @onclick="@(() => ToggleStream(c.Pid))">
                         @(_streaming.Contains(c.Pid) ? "■ Stop stream" : "▶ Live view")
                     </button>
-                    <button class="ac-pill" @onclick="@(() => LaunchHd(c))" title="full-screen native H.264 (works remotely, ~60fps)">🎬 HD</button>
+                    <button class="ac-pill @(_hdPid == c.Pid ? "on" : "")" @onclick="@(() => ToggleHd(c.Pid))" title="native H.264 inline — tap the video to enlarge">🎬 HD</button>
                 </div>
+                @if (_hdPid == c.Pid)
+                {
+                    <div id="ac-hd-slot" class="ac-stream"><div class="ac-hd-ph">📺 HD — tap to enlarge</div></div>
+                }
                 @if (_streaming.Contains(c.Pid))
                 {
                     <div class="ac-stream">
@@ -457,11 +462,37 @@ else
         await MeasureFrameAsync(pid);
     }
 
-    // Open the full-screen native H.264 view (WebSocket to the agent — works remotely over Tailscale).
-    private async Task LaunchHd(AcClientStatus c)
+    // ── Inline HD video (native AVSampleBufferDisplayLayer overlay pinned to the card's slot) ──
+    private int? _hdPid;                          // pid with inline HD on (single overlay)
+    private int? _hdShownPid;                     // pid the native overlay is currently showing
+    private DotNetObjectReference<AcClients>? _hdRef;
+
+    private void ToggleHd(int pid)
     {
-        if (string.IsNullOrWhiteSpace(_url)) return;
-        await HdLauncher.LaunchAsync(_url, c.Pid, _token ?? "", c.DisplayName);
+        _hdPid = (_hdPid == pid) ? (int?)null : pid;   // OnAfterRenderAsync reconciles the native overlay
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnHdRect(double x, double y, double w, double h) => HdController.SetFrame(x, y, w, h);
+
+    // Bring the native overlay in line with _hdPid (show/hide + start/stop the JS rect tracker).
+    private async Task ReconcileHdOverlay()
+    {
+        if (_hdShownPid == _hdPid) return;
+        if (_hdShownPid != null)
+        {
+            HdController.Hide();
+            try { await JS.InvokeVoidAsync("rynthHd.stopTrack"); } catch { }
+            _hdShownPid = null;
+        }
+        if (_hdPid != null && !string.IsNullOrWhiteSpace(_url))
+        {
+            HdController.Show(_url, _hdPid.Value, _token ?? "");
+            _hdRef ??= DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("rynthHd.startTrack", _hdRef, "ac-hd-slot"); } catch { }
+            _hdShownPid = _hdPid;
+        }
     }
 
     private async Task SetPreset(int pid, int idx)
@@ -559,7 +590,9 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!_disposed) await ReconcileHd();
+        if (_disposed) return;
+        await ReconcileHd();
+        await ReconcileHdOverlay();
     }
 
     private void OnResumed()
@@ -910,6 +943,9 @@ else
             _ = Status.PostWebRtcStopAsync(_url, _token, pid);
         }
         _hdActive.Clear();
+        // Tear down the inline HD overlay (native video) + its rect tracker.
+        if (_hdShownPid != null) { HdController.Hide(); try { _ = JS.InvokeVoidAsync("rynthHd.stopTrack"); } catch { } _hdShownPid = null; }
+        _hdRef?.Dispose(); _hdRef = null;
         StreamLifecycle.Resumed -= OnResumed;
         StreamLifecycle.Suspended -= OnSuspended;
         _cts?.Cancel();

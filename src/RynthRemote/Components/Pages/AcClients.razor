@@ -161,24 +161,17 @@ else
                     <button class="ac-pill @(_streaming.Contains(c.Pid) ? "on" : "")" @onclick="@(() => ToggleStream(c.Pid))">
                         @(_streaming.Contains(c.Pid) ? "■ Stop stream" : "▶ Live view")
                     </button>
-                    <button class="ac-pill @(_hdPid == c.Pid ? "on" : "")" @onclick="@(() => ToggleHd(c.Pid))" title="native H.264 inline — tap the video to enlarge">🎬 HD</button>
                 </div>
-                @if (_hdPid == c.Pid)
-                {
-                    <div id="ac-hd-slot" class="ac-stream"><div class="ac-hd-ph">📺 HD — tap to enlarge</div></div>
-                }
                 @if (_streaming.Contains(c.Pid))
                 {
-                    <div class="ac-stream">
-                        @if (Presets[PresetFor(c.Pid)].Hd)
-                        {
-                            <video id="@VideoId(c.Pid)" autoplay playsinline muted></video>
-                        }
-                        else
-                        {
-                            <img src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" />
-                        }
-                    </div>
+                    @if (Presets[PresetFor(c.Pid)].Hd)
+                    {
+                        <div id="@HdSlotId(c.Pid)" class="ac-stream"><div class="ac-hd-ph">📺 HD live — tap to enlarge</div></div>
+                    }
+                    else
+                    {
+                        <div class="ac-stream"><img src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" /></div>
+                    }
                     <div class="ac-qsel">
                         @for (int i = 0; i < Presets.Length; i++)
                         {
@@ -439,13 +432,11 @@ else
     {
         new("Saver", 2, 40, 480),     // ~tiny, for cellular (MJPEG)
         new("Balanced", 5, 50, 720),
-        new("Smooth", 12, 60, 0),     // native size, full motion (Wi-Fi)
-        // HD is now the full-screen native H.264 view (the "🎬 HD" button), not an inline preset —
-        // WebRTC couldn't connect remotely (mDNS/ICE). The Hd-flag plumbing below stays dormant.
+        new("Smooth", 12, 60, 0),     // native size, full motion (Wi-Fi, MJPEG)
+        new("HD", 0, 0, 0, Hd: true), // native H.264 over WebSocket — max fps + lowest latency (Wi-Fi; heavy data)
     };
 
-    private static string VideoId(int pid) => $"ac-hd-{pid}";
-    private readonly HashSet<int> _hdActive = new();   // pids with a live WebRTC connection (JS-side)
+    private static string HdSlotId(int pid) => $"ac-hd-slot-{pid}";
 
     private int PresetFor(int pid) => _presetByPid.TryGetValue(pid, out int v) ? v : _defaultPreset;
 
@@ -462,54 +453,66 @@ else
         await MeasureFrameAsync(pid);
     }
 
-    // ── Inline HD video (native AVSampleBufferDisplayLayer overlay pinned to the card's slot) ──
-    private int? _hdPid;                          // pid with inline HD on (single overlay)
+    // ── Inline HD video (native AVSampleBufferDisplayLayer overlay pinned to the HD slot) ──
+    // HD is the "HD" quality preset: when a stream is open with that preset chosen, the native overlay is
+    // pinned to that card's slot. Single overlay at a time (SetPreset reverts any other card off HD).
     private int? _hdShownPid;                     // pid the native overlay is currently showing
     private DotNetObjectReference<AcClients>? _hdRef;
-
-    private void ToggleHd(int pid)
-    {
-        _hdPid = (_hdPid == pid) ? (int?)null : pid;   // OnAfterRenderAsync reconciles the native overlay
-        StateHasChanged();
-    }
 
     [JSInvokable]
     public void OnHdRect(double x, double y, double w, double h) => HdController.SetFrame(x, y, w, h);
 
-    // Bring the native overlay in line with _hdPid (show/hide + start/stop the JS rect tracker).
+    // The single streaming pid whose chosen preset is HD (and is still in the feed), else null.
+    private int? DesiredHdPid()
+    {
+        var live = _result?.Payload?.Clients;
+        foreach (int pid in _streaming)
+            if (Presets[PresetFor(pid)].Hd && (live?.Any(c => c.Pid == pid) ?? false))
+                return pid;
+        return null;
+    }
+
+    // Bring the native overlay in line with the chosen HD preset (show/hide + start/stop the rect tracker).
     private async Task ReconcileHdOverlay()
     {
-        if (_hdShownPid == _hdPid) return;
+        int? desired = DesiredHdPid();
+        if (_hdShownPid == desired) return;
         if (_hdShownPid != null)
         {
             HdController.Hide();
             try { await JS.InvokeVoidAsync("rynthHd.stopTrack"); } catch { }
             _hdShownPid = null;
         }
-        if (_hdPid != null && !string.IsNullOrWhiteSpace(_url))
+        if (desired != null && !string.IsNullOrWhiteSpace(_url))
         {
-            HdController.Show(_url, _hdPid.Value, _token ?? "");
+            HdController.Show(_url, desired.Value, _token ?? "");
             _hdRef ??= DotNetObjectReference.Create(this);
-            try { await JS.InvokeVoidAsync("rynthHd.startTrack", _hdRef, "ac-hd-slot"); } catch { }
-            _hdShownPid = _hdPid;
+            try { await JS.InvokeVoidAsync("rynthHd.startTrack", _hdRef, HdSlotId(desired.Value)); } catch { }
+            _hdShownPid = desired;
         }
     }
 
     private async Task SetPreset(int pid, int idx)
     {
         if (idx < 0 || idx >= Presets.Length || PresetFor(pid) == idx) return;
+        if (Presets[idx].Hd)                                     // only one HD overlay at a time
+            foreach (int other in _streaming.ToArray())
+                if (other != pid && Presets[PresetFor(other)].Hd) _presetByPid[other] = 2; // back to Smooth
         _presetByPid[pid] = idx;
-        _defaultPreset = idx;                                    // remember for the next stream you open
+        if (!Presets[idx].Hd)                                    // never auto-default new streams to HD (single overlay)
+        {
+            _defaultPreset = idx;                                // remember for the next stream you open
+            try { await SettingsSvc.SetAsync(PresetKey, idx.ToString()); } catch { }
+        }
         _frameKbByPid.Remove(pid);
         _epochByPid[pid] = (_epochByPid.TryGetValue(pid, out int e) ? e : 0) + 1;  // reconnect just this stream
-        try { await SettingsSvc.SetAsync(PresetKey, idx.ToString()); } catch { }
         StateHasChanged();
         await MeasureFrameAsync(pid);
     }
 
     private async Task MeasureFrameAsync(int pid)
     {
-        if (Presets[PresetFor(pid)].Hd) return;       // HD = WebRTC, no MJPEG frame to measure
+        if (Presets[PresetFor(pid)].Hd) return;       // HD = native H.264, no MJPEG frame to measure
         var p = Presets[PresetFor(pid)];
         int bytes = await Status.MeasureFrameBytesAsync(_url, _token, pid, p.Q, p.W);
         if (bytes > 0) { _frameKbByPid[pid] = bytes / 1024.0; if (!_disposed) await InvokeAsync(StateHasChanged); }
@@ -517,92 +520,31 @@ else
 
     private string DataRateText(int pid)
     {
-        if (Presets[PresetFor(pid)].Hd) return "HD · WebRTC H.264";
+        if (Presets[PresetFor(pid)].Hd) return "HD · live · ~1.5 MB/s · ~5 GB/hr";
         if (!_frameKbByPid.TryGetValue(pid, out double kb) || kb <= 0) return "measuring…";
         double kbs = kb * Presets[PresetFor(pid)].Fps;
         return $"~{kbs:F0} KB/s · ~{kbs * 3600 / 1024:F0} MB/hr";
     }
 
-    // Sync the JS-side WebRTC connections to the rendered state. Runs after every render (the <video>
-    // element exists by then). Idempotent — only starts/stops on a diff. Start is HD-preset + streaming;
-    // stop is everything else. Reuses the existing _streaming / preset state, so it tracks Stop-stream,
-    // preset switches (HD↔MJPEG), and cards leaving the feed automatically.
-    private bool _reconcileBusy;   // serialize reconciles — the start path awaits network round-trips
-    private async Task ReconcileHd()
-    {
-        if (string.IsNullOrWhiteSpace(_url) || _reconcileBusy) return;
-        _reconcileBusy = true;
-        try
-        {
-            var livePids = _result?.Payload?.Clients?.Select(c => c.Pid).ToHashSet() ?? new HashSet<int>();
-            // Stop first: any active pid that should no longer be HD-streaming (preset switch / stop / gone).
-            foreach (int pid in _hdActive.ToArray())
-            {
-                bool wantHd = _streaming.Contains(pid) && Presets[PresetFor(pid)].Hd && livePids.Contains(pid);
-                if (!wantHd)
-                {
-                    _hdActive.Remove(pid);
-                    try { await JS.InvokeVoidAsync("rynthHd.stop", pid); } catch { }
-                    await Status.PostWebRtcStopAsync(_url, _token, pid);
-                }
-            }
-            // Start: streaming + HD preset + in feed. Signalling via C# native HTTP (the WebView's own
-            // fetch to the agent's http endpoint is blocked by WKWebView as active mixed content).
-            foreach (int pid in _streaming.ToArray())
-            {
-                bool wantHd = Presets[PresetFor(pid)].Hd && livePids.Contains(pid);
-                if (wantHd && _hdActive.Add(pid))
-                {
-                    try
-                    {
-                        string? offer = await JS.InvokeAsync<string?>("rynthHd.createOffer", VideoId(pid), pid);
-                        if (!string.IsNullOrEmpty(offer))
-                        {
-                            string? answer = await Status.PostWebRtcOfferAsync(_url, _token, pid, offer);
-                            if (!string.IsNullOrEmpty(answer))
-                                await JS.InvokeAsync<string>("rynthHd.applyAnswer", pid, answer);
-                            else
-                                await Status.PostWebRtcClientLogAsync(_url, _token, pid, "agent returned no answer (offer rejected/failed)");
-                        }
-                    }
-                    catch (Exception ex) { try { await Status.PostWebRtcClientLogAsync(_url, _token, pid, "reconcile EXC: " + ex.Message); } catch { } }
-                    // Drain the WebView's WebRTC log to the agent now, and again shortly (catch async ICE/pc events).
-                    await DrainHdLog(pid);
-                    int dpid = pid;
-                    _ = Task.Run(async () => { try { await Task.Delay(2500); if (!_disposed) await DrainHdLog(dpid); } catch { } });
-                }
-            }
-        }
-        finally { _reconcileBusy = false; }
-    }
-
-    // Drain the WebView's WebRTC log buffer and forward each line to the agent log (diagnostic).
-    private async Task DrainHdLog(int pid)
-    {
-        try
-        {
-            var lines = await JS.InvokeAsync<string[]>("rynthHd.drainLog");
-            foreach (var ln in lines)
-                await Status.PostWebRtcClientLogAsync(_url, _token, pid, ln);
-        }
-        catch { }
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_disposed) return;
-        await ReconcileHd();
-        await ReconcileHdOverlay();
+        await ReconcileHdOverlay();   // pin / unpin the native HD overlay to match the chosen preset
     }
 
     private void OnResumed()
     {
-        if (_streaming.Count == 0) return;
-        foreach (int pid in _streaming)                          // iOS dropped the streams — reconnect each
+        if (_streaming.Count == 0 && _hdShownPid == null) return;
+        foreach (int pid in _streaming)                          // iOS dropped the MJPEG streams — reconnect each
             _epochByPid[pid] = (_epochByPid.TryGetValue(pid, out int e) ? e : 0) + 1;
-        // WebRTC connections die on background too: forget them so the next render's ReconcileHd re-offers
-        // (JS start() closes the stale peer first). Faster than a full agent-side teardown/restart.
-        _hdActive.Clear();
+        // The native HD WebSocket also dies in the background — tear the overlay down so the next render's
+        // ReconcileHdOverlay rebuilds it with a fresh socket (its no-op short-circuit would otherwise skip it).
+        if (_hdShownPid != null)
+        {
+            HdController.Hide();
+            try { _ = JS.InvokeVoidAsync("rynthHd.stopTrack"); } catch { }
+            _hdShownPid = null;
+        }
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -936,13 +878,6 @@ else
         int[] pids;
         lock (_moveLock) { pids = _held.Keys.ToArray(); _held.Clear(); }
         foreach (var pid in pids) SendMove(pid, "stop", false);
-        // Tear down any HD WebRTC streams (close the peer + tell the agent to stop encoding). Fire-and-forget.
-        foreach (var pid in _hdActive.ToArray())
-        {
-            try { _ = JS.InvokeVoidAsync("rynthHd.stop", pid); } catch { }
-            _ = Status.PostWebRtcStopAsync(_url, _token, pid);
-        }
-        _hdActive.Clear();
         // Tear down the inline HD overlay (native video) + its rect tracker.
         if (_hdShownPid != null) { HdController.Hide(); try { _ = JS.InvokeVoidAsync("rynthHd.stopTrack"); } catch { } _hdShownPid = null; }
         _hdRef?.Dispose(); _hdRef = null;

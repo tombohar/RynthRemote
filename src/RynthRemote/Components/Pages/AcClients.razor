@@ -182,6 +182,47 @@ else
                     </div>
                 }
 
+                <div class="ac-drive">
+                    <button class="ac-gear-h" @onclick="@(() => ToggleDrive(c.Pid))">
+                        @(_showDrive.Contains(c.Pid) ? "▾" : "▸") Drive
+                    </button>
+                    @if (_showDrive.Contains(c.Pid))
+                    {
+                        <div class="ac-dpad">
+                            <span></span>
+                            <div class="ac-dbtn @(Held(c.Pid, "forward"))"
+                                 @onpointerdown="@(() => StartMove(c, "forward"))"
+                                 @onpointerup="@(() => StopMove(c, "forward"))"
+                                 @onpointerleave="@(() => StopMove(c, "forward"))"
+                                 @onpointercancel="@(() => StopMove(c, "forward"))"
+                                 @oncontextmenu:preventDefault>▲</div>
+                            <span></span>
+                            <div class="ac-dbtn @(Held(c.Pid, "left"))"
+                                 @onpointerdown="@(() => StartMove(c, "left"))"
+                                 @onpointerup="@(() => StopMove(c, "left"))"
+                                 @onpointerleave="@(() => StopMove(c, "left"))"
+                                 @onpointercancel="@(() => StopMove(c, "left"))"
+                                 @oncontextmenu:preventDefault>◀</div>
+                            <div class="ac-dbtn stop" @onclick="@(() => HardStop(c))">■</div>
+                            <div class="ac-dbtn @(Held(c.Pid, "right"))"
+                                 @onpointerdown="@(() => StartMove(c, "right"))"
+                                 @onpointerup="@(() => StopMove(c, "right"))"
+                                 @onpointerleave="@(() => StopMove(c, "right"))"
+                                 @onpointercancel="@(() => StopMove(c, "right"))"
+                                 @oncontextmenu:preventDefault>▶</div>
+                            <span></span>
+                            <div class="ac-dbtn @(Held(c.Pid, "back"))"
+                                 @onpointerdown="@(() => StartMove(c, "back"))"
+                                 @onpointerup="@(() => StopMove(c, "back"))"
+                                 @onpointerleave="@(() => StopMove(c, "back"))"
+                                 @onpointercancel="@(() => StopMove(c, "back"))"
+                                 @oncontextmenu:preventDefault>▼</div>
+                            <span></span>
+                        </div>
+                        <div class="ac-dnote">hold to move · ◀▶ turn · ■ stop @(c.MacroRunning ? "· stop the macro first — nav & combat facing will fight you" : "")</div>
+                    }
+                </div>
+
                 @if (!string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase))
                 {
                     <div class="ac-stats">
@@ -348,47 +389,6 @@ else
                             </div>
                         }
                     </div>
-
-                    <div class="ac-drive">
-                        <button class="ac-gear-h" @onclick="@(() => ToggleDrive(c.Pid))">
-                            @(_showDrive.Contains(c.Pid) ? "▾" : "▸") Drive
-                        </button>
-                        @if (_showDrive.Contains(c.Pid))
-                        {
-                            <div class="ac-dpad">
-                                <span></span>
-                                <div class="ac-dbtn @(Held(c.Pid, "forward"))"
-                                     @onpointerdown="@(() => StartMove(c, "forward"))"
-                                     @onpointerup="@(() => StopMove(c, "forward"))"
-                                     @onpointerleave="@(() => StopMove(c, "forward"))"
-                                     @onpointercancel="@(() => StopMove(c, "forward"))"
-                                     @oncontextmenu:preventDefault>▲</div>
-                                <span></span>
-                                <div class="ac-dbtn @(Held(c.Pid, "left"))"
-                                     @onpointerdown="@(() => StartMove(c, "left"))"
-                                     @onpointerup="@(() => StopMove(c, "left"))"
-                                     @onpointerleave="@(() => StopMove(c, "left"))"
-                                     @onpointercancel="@(() => StopMove(c, "left"))"
-                                     @oncontextmenu:preventDefault>◀</div>
-                                <div class="ac-dbtn stop" @onclick="@(() => HardStop(c))">■</div>
-                                <div class="ac-dbtn @(Held(c.Pid, "right"))"
-                                     @onpointerdown="@(() => StartMove(c, "right"))"
-                                     @onpointerup="@(() => StopMove(c, "right"))"
-                                     @onpointerleave="@(() => StopMove(c, "right"))"
-                                     @onpointercancel="@(() => StopMove(c, "right"))"
-                                     @oncontextmenu:preventDefault>▶</div>
-                                <span></span>
-                                <div class="ac-dbtn @(Held(c.Pid, "back"))"
-                                     @onpointerdown="@(() => StartMove(c, "back"))"
-                                     @onpointerup="@(() => StopMove(c, "back"))"
-                                     @onpointerleave="@(() => StopMove(c, "back"))"
-                                     @onpointercancel="@(() => StopMove(c, "back"))"
-                                     @oncontextmenu:preventDefault>▼</div>
-                                <span></span>
-                            </div>
-                            <div class="ac-dnote">hold to move · ◀▶ turn · ■ stop @(c.MacroRunning ? "· stop the macro first — nav & combat facing will fight you" : "")</div>
-                        }
-                    </div>
                 }
 
                 <div class="ac-foot">
@@ -450,6 +450,7 @@ else
     private async Task ToggleStream(int pid)
     {
         if (!_streaming.Add(pid)) { _streaming.Remove(pid); return; }
+        _showDrive.Add(pid);   // open the Drive d-pad alongside the stream so the arrows are right there
         await MeasureFrameAsync(pid);
     }
 

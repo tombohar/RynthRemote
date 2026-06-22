@@ -51,6 +51,8 @@
     .ac-gear-row .gn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .ac-gear-row .gi { color:var(--muted); font-family:ui-monospace,monospace; user-select:all; white-space:nowrap; }
     .ac-chat { margin-top:.4rem; }
+    .ac-ctabs { display:flex; flex-wrap:wrap; gap:.25rem; margin:.2rem 0 .1rem; }
+    .ac-ctab { font-size:.7rem; padding:.12rem .42rem; }
     .ac-chat-log { max-height:200px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:.35rem .45rem; display:flex; flex-direction:column; gap:.1rem; margin:.2rem 0; }
     .ac-chat-line { font-size:.74rem; line-height:1.25; word-break:break-word; }
     .ac-chat-send { display:flex; gap:.3rem; }
@@ -370,15 +372,26 @@ else
                         </button>
                         @if (_showChat.Contains(c.Pid))
                         {
-                            <div class="ac-chat-log">
-                                @if (c.RecentChat is { Count: > 0 })
+                            <div class="ac-ctabs">
+                                @foreach (var tab in ChatTabs)
                                 {
-                                    @for (int i = c.RecentChat.Count - 1; i >= 0; i--)
+                                    string t = tab; int pid = c.Pid;
+                                    <button class="ac-pill ac-ctab @(ChatTabFor(pid) == t ? "on" : "")" @onclick="@(() => SetChatTab(pid, t))">@t</button>
+                                }
+                            </div>
+                            <div class="ac-chat-log">
+                                @{
+                                    var curTab = ChatTabFor(c.Pid);
+                                    var lines = (c.RecentChat ?? new()).Where(l => curTab == "All" || l.Route == curTab).ToList();
+                                }
+                                @if (lines.Count > 0)
+                                {
+                                    @for (int i = lines.Count - 1; i >= 0; i--)
                                     {
-                                        <div class="ac-chat-line" style="color:@c.RecentChat[i].Color">@c.RecentChat[i].Text</div>
+                                        <div class="ac-chat-line" style="color:@lines[i].Color">@lines[i].Text</div>
                                     }
                                 }
-                                else { <div class="ac-sub">no chat captured yet</div> }
+                                else { <div class="ac-sub">@(c.RecentChat is { Count: > 0 } ? $"no {curTab} messages" : "no chat captured yet")</div> }
                             </div>
                             <div class="ac-chat-send">
                                 <input class="ac-chat-input" placeholder="say, or /tell /f /command…"
@@ -586,6 +599,13 @@ else
 
     private readonly HashSet<int> _showChat = new();             // pids whose chat panel is open
     private void ToggleChat(int pid) { if (!_showChat.Add(pid)) _showChat.Remove(pid); }
+
+    // Chat tabs — the standard AC tab set, routed by message-type (AcChatLine.Route). The user's
+    // exact in-game tab config isn't readable from the client, so this mirrors the default tabs.
+    private static readonly string[] ChatTabs = { "All", "Chat", "Combat", "Channels", "System", "Rynth", "Other" };
+    private readonly Dictionary<int, string> _chatTab = new();   // per-pid active tab (default "All")
+    private string ChatTabFor(int pid) => _chatTab.TryGetValue(pid, out var t) ? t : "All";
+    private void SetChatTab(int pid, string tab) => _chatTab[pid] = tab;
     private readonly Dictionary<int, string> _chatDraft = new();
     private string GetDraft(int pid) => _chatDraft.TryGetValue(pid, out var v) ? v : "";
     private async Task ChatKeyDown(KeyboardEventArgs e, AcClientStatus c) { if (e.Key == "Enter") await SendChat(c); }

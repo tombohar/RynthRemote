@@ -113,16 +113,36 @@ public sealed class AcChatLine
     [System.Text.Json.Serialization.JsonPropertyName("t")] public string Text { get; set; } = "";
     [System.Text.Json.Serialization.JsonPropertyName("c")] public int Type { get; set; }
 
-    /// Colour by common AC chat type (speech/tell/combat/magic/system/channel), else default text.
-    public string Color => Type switch
-    {
-        3 => "#86efac",                    // tell (SpeechDirect)
-        6 => "#fca5a5",                    // combat
-        7 => "#c4b5fd",                    // magic
-        5 => "#94a3b8",                    // system event
-        >= 0x1B and <= 0x2F => "#7dd3fc",  // channels (general/trade/allegiance/etc.)
-        _ => "#e6ecf7",                    // speech / default
-    };
+    /// The bot's own [RynthAi]/[Rynth…] status output.
+    private bool IsRynth => Text.StartsWith("[Rynth", System.StringComparison.Ordinal);
+
+    /// Which standard chat tab this line belongs to — mirrors AC's default chat-type → tab routing.
+    /// (The user's exact in-game tab config isn't readable from the client, so this is the standard set.)
+    public string Route =>
+        IsRynth ? "Rynth"
+        : Type switch
+        {
+            0x06 or 0x07 or 0x11 or 0x15 or 0x16 => "Combat",                          // combat / magic / spellcasting
+            0x00 or 0x05 or 0x0D or 0x14 or 0x17 or 0x18 or 0x19 or 0x1F => "System",   // broadcast / system / advancement / craft …
+            0x08 or 0x09 => "Channels",                                                // turbine channels (low ids)
+            0x02 or 0x03 or 0x04 or 0x0A or 0x0B or 0x0C or 0x12 or 0x13 => "Chat",     // speech / tell / social / emote / alleg / fellow
+            >= 0x1B and <= 0x2F => "Channels",                                         // turbine channels (high range)
+            _ => "Other",
+        };
+
+    /// Colour by common AC chat type (speech/tell/combat/magic/system/social/channel), else default text.
+    public string Color =>
+        IsRynth ? "#5eead4"                        // Rynth bot output
+        : Type switch
+        {
+            3 or 4 => "#86efac",                   // tell (in / out)
+            6 or 0x15 or 0x16 => "#fca5a5",        // combat
+            7 or 0x11 => "#c4b5fd",                // magic / spellcasting
+            5 => "#94a3b8",                        // system event
+            0x0A or 0x0B or 0x0C => "#fcd34d",     // social / emote
+            >= 0x1B and <= 0x2F => "#7dd3fc",      // channels (general/trade/allegiance/etc.)
+            _ => "#e6ecf7",                        // speech / default
+        };
 }
 
 /// One worn/wielded item with its full appraisal (Assess/Identify data).

@@ -754,8 +754,8 @@ else
                 // button held); easy on cellular data when you're just glancing at the list. After a
                 // failed/stalled poll, retry soon so one bad fetch over Tailscale can't compound into a
                 // long gap (the ~20s symptom: an 8s stall + a full 4s wait used to stack up).
-                bool engaged = _streaming.Count > 0;
-                lock (_moveLock) engaged |= _held.Count > 0;
+                bool engaged = _streaming.Count > 0 || _showChat.Count > 0;   // streaming, or a chat panel open
+                lock (_moveLock) engaged |= _held.Count > 0;                  // or a movement button held
                 int delayMs = !ok ? 1000 : engaged ? 1000 : 3000;
                 await Task.Delay(delayMs, ct);
             }

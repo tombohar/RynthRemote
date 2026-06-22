@@ -26,6 +26,7 @@ public sealed class H264StreamView : UIView
     private string _baseUrl = "", _token = "";
     private int _pid;
     private bool _loggedFirstFrame;
+    private bool _awaitingKeyframe;   // after a drop-to-live flush, skip frames until the next IDR (clean restart)
 
     public H264StreamView()
     {
@@ -153,9 +154,25 @@ public sealed class H264StreamView : UIView
         var att = sample.GetSampleAttachments(true);
         if (att.Length > 0) att[0].DisplayImmediately = true;
 
+        bool hasIdr = false;                                  // does this access unit carry a keyframe?
+        foreach (var n in nals) if ((n[0] & 0x1F) == 5) { hasIdr = true; break; }
+
         DispatchQueue.MainQueue.DispatchAsync(() =>
         {
-            if (_layer.Status == AVQueuedSampleBufferRenderingStatus.Failed) _layer.Flush();
+            // Drop-to-live: never let the display layer accumulate a backlog. AVSampleBufferDisplayLayer
+            // plays its queue in order, so a network burst (TCP/Tailscale delivering several frames at once)
+            // piles up and the lag never recovers — control drifts to >1s after a few minutes. When the layer
+            // reports it's backed up (ReadyForMoreMediaData == false) or the decode failed, flush the stale
+            // frames and resync at the next keyframe so we always present the freshest image. The encoder's
+            // short GOP keeps the post-flush gap tiny. (Can't just drop P-frames — they'd corrupt until the
+            // next IDR — so we wait for one.)
+            if (_layer.Status == AVQueuedSampleBufferRenderingStatus.Failed || !_layer.ReadyForMoreMediaData)
+            {
+                _layer.Flush();
+                _awaitingKeyframe = true;
+            }
+            if (_awaitingKeyframe && !hasIdr) { sample.Dispose(); return; }   // skip until a clean restart point
+            _awaitingKeyframe = false;
             _layer.Enqueue(sample);
             if (!_loggedFirstFrame) { _loggedFirstFrame = true; _ = PostLog("first frame enqueued"); }
             sample.Dispose();

@@ -49,8 +49,11 @@ public sealed class AcStatusClient : IAcStatusClient
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
     // Bounds the WHOLE request incl. the body read. HttpClient.Timeout with
     // ResponseHeadersRead only covers up to the headers, so a stalled/trickling
-    // body would otherwise hang the poll until the page is disposed.
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
+    // body would otherwise hang the poll until the page is disposed. Kept tight
+    // (a healthy status fetch is well under 1s) so a jittery Tailscale poll fails
+    // fast and the loop retries soon, instead of one stall compounding into a
+    // multi-second gap on the dashboard.
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
     private readonly HttpClient _http;
 
     public AcStatusClient(HttpClient http) => _http = http;

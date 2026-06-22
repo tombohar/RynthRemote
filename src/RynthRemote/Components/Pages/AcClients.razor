@@ -724,19 +724,27 @@ else
 
     private async Task PollLoopAsync(CancellationToken ct)
     {
-        await RefreshOnceAsync(ct);
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(4));
-            while (await timer.WaitForNextTickAsync(ct))
-                await RefreshOnceAsync(ct);
+            while (!ct.IsCancellationRequested)
+            {
+                bool ok = await RefreshOnceAsync(ct);
+                // Snappy numbers while you're actively watching/driving (a live view open or a movement
+                // button held); easy on cellular data when you're just glancing at the list. After a
+                // failed/stalled poll, retry soon so one bad fetch over Tailscale can't compound into a
+                // long gap (the ~20s symptom: an 8s stall + a full 4s wait used to stack up).
+                bool engaged = _streaming.Count > 0;
+                lock (_moveLock) engaged |= _held.Count > 0;
+                int delayMs = !ok ? 1000 : engaged ? 1000 : 3000;
+                await Task.Delay(delayMs, ct);
+            }
         }
         catch (OperationCanceledException) { /* disposed */ }
     }
 
-    private async Task RefreshOnceAsync(CancellationToken ct)
+    private async Task<bool> RefreshOnceAsync(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(_url)) return;
+        if (string.IsNullOrWhiteSpace(_url)) return false;
         var requestedUrl = _url;   // so a response that lands after a config change is discarded
         try
         {
@@ -744,13 +752,14 @@ else
             // Bail if the page is gone, the poll was cancelled, or the URL changed mid-flight
             // (a stale old-host response must not overwrite the freshly-switched view).
             if (_disposed || ct.IsCancellationRequested
-                || !string.Equals(requestedUrl, _url, StringComparison.Ordinal)) return;
+                || !string.Equals(requestedUrl, _url, StringComparison.Ordinal)) return false;
             _result = r;
             if (_held.Count > 0) ReconcileHeldWithFeed();   // release any held pid that just left the feed
             await InvokeAsync(StateHasChanged);
+            return r.Payload is not null;   // false on a network/agent failure → loop retries soon
         }
-        catch (OperationCanceledException) { /* cancelled (page disposed / config change) */ }
-        catch (ObjectDisposedException) { /* circuit/renderer torn down mid-render */ }
+        catch (OperationCanceledException) { return false; /* cancelled (page disposed / config change) */ }
+        catch (ObjectDisposedException) { return false; /* circuit/renderer torn down mid-render */ }
     }
 
     private Task Refresh() => RefreshOnceAsync(_cts?.Token ?? CancellationToken.None);

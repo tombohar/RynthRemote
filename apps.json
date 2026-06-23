@@ -17,7 +17,198 @@
       "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.25/RynthRemote.ipa",
       "size": 5780684,
       "versions": [
-        { "version": "1.0.25", "date": "2026-06-23", "localizedDescription": "Automated build 1.0.25.", "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.25/RynthRemote.ipa", "size": 5780684, "minOSVersion": "15.0" }
+        {
+          "version": "1.0.25",
+          "date": "2026-06-23",
+          "localizedDescription": "Automated build 1.0.25.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.25/RynthRemote.ipa",
+          "size": 5780684,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.24",
+          "date": "2026-06-23",
+          "localizedDescription": "Automated build 1.0.24.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.24/RynthRemote.ipa",
+          "size": 5780502,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.23",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.23.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.23/RynthRemote.ipa",
+          "size": 5776815,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.22",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.22.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.22/RynthRemote.ipa",
+          "size": 5776808,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.21",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.21.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.21/RynthRemote.ipa",
+          "size": 5776065,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.20",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.20.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.20/RynthRemote.ipa",
+          "size": 5776046,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.19",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.19.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.19/RynthRemote.ipa",
+          "size": 5775596,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.18",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.18.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.18/RynthRemote.ipa",
+          "size": 5777510,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.17",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.17.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.17/RynthRemote.ipa",
+          "size": 5777940,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.15",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.15.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.15/RynthRemote.ipa",
+          "size": 5726181,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.14",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.14.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.14/RynthRemote.ipa",
+          "size": 5726065,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.13",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.13.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.13/RynthRemote.ipa",
+          "size": 5724643,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.12",
+          "date": "2026-06-22",
+          "localizedDescription": "Automated build 1.0.12.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.12/RynthRemote.ipa",
+          "size": 5722010,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.11",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.11.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.11/RynthRemote.ipa",
+          "size": 5719252,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.10",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.10.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.10/RynthRemote.ipa",
+          "size": 5718291,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.9",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.9.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.9/RynthRemote.ipa",
+          "size": 5717622,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.8",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.8.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.8/RynthRemote.ipa",
+          "size": 5717262,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.7",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.7.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.7/RynthRemote.ipa",
+          "size": 5716871,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.6",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.6.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.6/RynthRemote.ipa",
+          "size": 5715304,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.5",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.5.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.5/RynthRemote.ipa",
+          "size": 5713628,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.4",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.4.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.4/RynthRemote.ipa",
+          "size": 5712882,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.3",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.3.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.3/RynthRemote.ipa",
+          "size": 5712713,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.2",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.2.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.2/RynthRemote.ipa",
+          "size": 5708864,
+          "minOSVersion": "15.0"
+        },
+        {
+          "version": "1.0.1",
+          "date": "2026-06-21",
+          "localizedDescription": "Automated build 1.0.1.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.1/RynthRemote.ipa",
+          "size": 5708140,
+          "minOSVersion": "15.0"
+        }
       ]
     }
   ],

@@ -15,11 +15,15 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* Phone sizing: the whole dashboard is rem-based off the root, so this one knob scales all text +
+   tap targets up to a comfortable size (the d-pad arrows at 1.5rem were the only thing big enough;
+   this lifts everything toward that). Bump/lower this single value to taste. */
+html { font-size: 21px; }
 body {
     background: var(--bg);
     color: var(--text);
     font-family: 'OpenSansRegular', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 15px;
+    font-size: 1rem;
     -webkit-text-size-adjust: 100%;
 }
 .status-bar-safe-area { height: env(safe-area-inset-top, 0); background: var(--bg); }

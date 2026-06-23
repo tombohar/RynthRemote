@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.WebSockets;
 using System.Text.Json;
 
 namespace RynthRemote.AcStatus;
@@ -24,6 +25,12 @@ public interface IAcStatusClient
     /// network/parse problems — returns a Fail result with a message instead.
     /// Only an honoured cancellation (page disposed) propagates.
     Task<AcStatusResult> GetStatusAsync(string? baseUrl, string? token, CancellationToken ct = default);
+
+    /// Streams the StatusAgent feed over the agent's /statusfeed WebSocket, invoking onPayload for each
+    /// pushed snapshot until the socket drops or ct cancels. Never throws for network problems — returns
+    /// so the caller can fall back to GetStatusAsync polling and retry. This is the low-latency path
+    /// (the agent pushes on change, ~150ms, instead of the app polling every few seconds).
+    Task StreamStatusAsync(string? baseUrl, string? token, Action<AcStatusResult> onPayload, CancellationToken ct = default);
 
     /// POSTs a control command (toggle/profile/utility) to the agent for one client.
     /// Never throws for network problems — returns a Fail result instead.
@@ -104,6 +111,67 @@ public sealed class AcStatusClient : IAcStatusClient
         catch (JsonException)
         {
             return AcStatusResult.Fail("The agent sent data this app couldn't read.");
+        }
+    }
+
+    public async Task StreamStatusAsync(string? baseUrl, string? token, Action<AcStatusResult> onPayload, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl)) return;
+
+        Uri uri;
+        try { uri = BuildFeedUri(baseUrl, token); }
+        catch { return; }
+
+        using var ws = new ClientWebSocket();
+        try
+        {
+            // The agent's /statusfeed accepts either an Authorization header or ?token= (already in the
+            // URI). Set the header too where the platform allows it — belt and suspenders.
+            if (!string.IsNullOrWhiteSpace(token))
+                try { ws.Options.SetRequestHeader("Authorization", "Bearer " + token.Trim()); } catch { }
+
+            using (var connect = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                connect.CancelAfter(RequestTimeout);   // bound the upgrade handshake
+                await ws.ConnectAsync(uri, connect.Token).ConfigureAwait(false);
+            }
+
+            var buf = new byte[64 * 1024];
+            using var ms = new MemoryStream();
+            while (ws.State == WebSocketState.Open && !ct.IsCancellationRequested)
+            {
+                // One push = one full aggregate JSON, possibly spanning several frames; reassemble it.
+                ms.SetLength(0);
+                WebSocketReceiveResult res;
+                do
+                {
+                    res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), ct).ConfigureAwait(false);
+                    if (res.MessageType == WebSocketMessageType.Close) return;
+                    ms.Write(buf, 0, res.Count);
+                }
+                while (!res.EndOfMessage);
+
+                if (ms.Length == 0) continue;
+                AcStatusPayload? payload;
+                try { payload = JsonSerializer.Deserialize<AcStatusPayload>(ms.ToArray(), JsonOpts); }
+                catch (JsonException) { continue; }   // skip one bad frame; keep the socket alive
+                if (payload is not null)
+                    onPayload(AcStatusResult.Success(payload));
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;   // caller cancelled (page disposed / URL changed) — let it bubble
+        }
+        catch
+        {
+            // Connect/receive failed or the socket dropped — return so the caller falls back to polling
+            // and retries the WS. (No partial result; the poll path keeps the dashboard live meanwhile.)
+        }
+        finally
+        {
+            if (ws.State == WebSocketState.Open)
+                try { await ws.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).ConfigureAwait(false); } catch { }
         }
     }
 
@@ -282,6 +350,23 @@ public sealed class AcStatusClient : IAcStatusClient
         // Rebuild from the trimmed path either way, so "/status/" normalises to "/status"
         // (returning b verbatim would keep the trailing slash and could 404 the agent).
         var ub = new UriBuilder(b) { Path = hasStatus ? path : (path.Length == 0 ? "" : path) + "/status" };
+        return ub.Uri;
+    }
+
+    /// The agent's /statusfeed WebSocket URL: same host/port as /status, scheme ws/wss, token as ?token=
+    /// (a WS upgrade can't reliably carry an auth header on every platform, and img-style query auth is the
+    /// pattern the agent already supports).
+    public static Uri BuildFeedUri(string baseUrl, string? token)
+    {
+        var status = BuildStatusUri(baseUrl);
+        var ub = new UriBuilder(status)
+        {
+            Scheme = status.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws",
+            Path = status.AbsolutePath
+                .Replace("/status.json", "/statusfeed", StringComparison.OrdinalIgnoreCase)
+                .Replace("/status", "/statusfeed", StringComparison.OrdinalIgnoreCase),
+            Query = string.IsNullOrWhiteSpace(token) ? "" : "token=" + Uri.EscapeDataString(token.Trim()),
+        };
         return ub.Uri;
     }
 }

@@ -430,6 +430,8 @@ else
     private AcStatusResult? _result;
     private CancellationTokenSource? _cts;
     private bool _disposed;
+    private DateTime _lastFeedAtUtc = DateTime.MinValue;   // when the /statusfeed WS last delivered (gates the fallback poll)
+    private CancellationTokenSource? _feedConnCts;          // cancels the live WS so the feed reconnects on a URL change
 
     private bool _showControls = true;
     private readonly Dictionary<int, string?> _cmdMsg = new();   // per-pid transient command feedback
@@ -739,7 +741,8 @@ else
         StreamLifecycle.Resumed += OnResumed;
         StreamLifecycle.Suspended += OnSuspended;
         _cts = new CancellationTokenSource();
-        _ = PollLoopAsync(_cts.Token);
+        _ = FeedLoopAsync(_cts.Token);     // low-latency WS push (primary)
+        _ = PollLoopAsync(_cts.Token);     // HTTP poll (bootstrap + fallback when the push path is down)
         _ = KeepAliveLoopAsync(_cts.Token);
     }
 
@@ -749,6 +752,11 @@ else
         {
             while (!ct.IsCancellationRequested)
             {
+                // Back off while the /statusfeed WS is delivering — it already keeps _result live, so this
+                // is the bootstrap + fallback, not a redundant second fetch. Recheck soon so a WS drop is
+                // picked up within ~2s and the poll takes over.
+                if ((DateTime.UtcNow - _lastFeedAtUtc).TotalSeconds < 4) { await Task.Delay(2000, ct); continue; }
+
                 bool ok = await RefreshOnceAsync(ct);
                 // Snappy numbers while you're actively watching/driving (a live view open or a movement
                 // button held); easy on cellular data when you're just glancing at the list. After a
@@ -783,6 +791,42 @@ else
         catch (ObjectDisposedException) { return false; /* circuit/renderer torn down mid-render */ }
     }
 
+    // Low-latency path: hold the agent's /statusfeed WebSocket open and apply each pushed snapshot the
+    // instant it lands (~150ms after the box writes it), instead of waiting for the next poll. On any drop
+    // it falls through to the poll loop (which covers the gap) and re-opens the socket after a short backoff.
+    private async Task FeedLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                string url = _url;
+                if (string.IsNullOrWhiteSpace(url)) { await Task.Delay(1000, ct); continue; }
+
+                using var conn = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                _feedConnCts = conn;   // SaveConfig cancels this to force a reconnect on a changed URL
+                try
+                {
+                    await Status.StreamStatusAsync(url, _token, r =>
+                    {
+                        // Drop a stale push from a host we've since switched away from (URL changed mid-connection).
+                        if (_disposed || !string.Equals(url, _url, StringComparison.Ordinal)) return;
+                        _lastFeedAtUtc = DateTime.UtcNow;
+                        _result = r;
+                        if (r.Payload is not null && _held.Count > 0) ReconcileHeldWithFeed();
+                        _ = InvokeAsync(StateHasChanged);
+                    }, conn.Token);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                catch { /* socket unavailable / dropped — the poll loop is covering us */ }
+
+                if (ct.IsCancellationRequested) break;
+                await Task.Delay(2000, ct);   // brief backoff before re-opening the socket
+            }
+        }
+        catch (OperationCanceledException) { /* page disposed */ }
+    }
+
     private Task Refresh() => RefreshOnceAsync(_cts?.Token ?? CancellationToken.None);
 
     private void ToggleConfig() => _showConfig = !_showConfig;
@@ -796,6 +840,8 @@ else
         _savedConfig = true;
         _showConfig = false;
         _result = null;
+        _lastFeedAtUtc = DateTime.MinValue;        // let the poll take over until the feed reconnects
+        try { _feedConnCts?.Cancel(); } catch { }  // drop the old-host WS; the feed loop re-opens on the new URL
         await RefreshOnceAsync(_cts?.Token ?? CancellationToken.None);
     }
 

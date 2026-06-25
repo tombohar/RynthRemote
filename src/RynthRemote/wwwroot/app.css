@@ -1,24 +1,64 @@
 :root {
-    --bg: #0b1120;
-    --surface: #111a2e;
-    --surface-2: #16213c;
-    --border: #243150;
-    --text: #e6ecf7;
-    --text-dim: #9aa9c4;
-    --muted: #a8b5c7;
-    --accent: #6366f1;
-    --accent-hover: #7c7ff3;
-    --red: #f87171;
-    --amber: #fbbf24;
-    --green: #34d399;
+    /* ── Bridgeport design tokens (UI redesign, Phase 0). Existing class names keep these var names; the
+       values are repointed to the new system, so the whole app upgrades without touching every class. ── */
+
+    /* Dark shell — warmed cool-slate */
+    --bg: #0d1018;
+    --surface: #161b27;
+    --surface-2: #1f2735;
+    --surface-3: #2a3344;
+    --border: #313c4f;
+    --border-soft: #232c3a;
+    --text: #eef2f8;
+    --text-2: #b9c4d6;
+    --text-3: #8a97ac;
+    --text-dim: #b9c4d6;   /* legacy alias → text-2 (was #9aa9c4, failed WCAG AA) */
+    --muted: #aab6c9;      /* legacy secondary text, AA-safe */
+
+    /* Accent — AC bronze/gold (was indigo #6366f1) */
+    --accent: #d9a441;
+    --accent-deep: #a9761f;
+    --accent-bright: #e7c074;
+    --accent-hover: #e7c074;   /* legacy alias */
+    --accent-ink: #2a1d0e;     /* text on gold */
+
+    /* Semantic state — intent-mapped, each with -ink (text on fill) + -bg (tint) */
+    --state-ok: #34d399;   --state-ok-ink: #06281c;   --state-ok-bg: #11281d;
+    --state-info: #60a5fa; --state-info-ink: #061a33; --state-info-bg: #0e1c33;
+    --state-warn: #f5b14a; --state-warn-ink: #2a1c05; --state-warn-bg: #2a1c05;
+    --state-bad: #f5604d;  --state-bad-ink: #2a0c08;  --state-bad-bg: #2a1014;
+    --green: #34d399;      /* legacy aliases */
+    --amber: #f5b14a;
+    --red: #f5604d;
+
+    /* Parchment — the AC "game" surfaces, lifted to :root so chat/archive reuse them */
+    --pch-bg-1: #e8d6ad;
+    --pch-bg-2: #d8c08c;
+    --pch-panel: #f3e8cb;
+    --pch-ink: #2a1d0e;
+    --pch-ink-2: #5a3d1c;   /* was #7a5c30, failed AA on tan */
+    --pch-edge: #5a3d1c;
+    --pch-rule: #c4a772;
+    --pch-gold: #e8c060;
+    --pch-accent: #9a5a10;
+
+    /* Type scale, spacing (4pt), radius, elevation, tap floor, focus ring */
+    --fs-cap: .72rem; --fs-sm: .82rem; --fs-base: .92rem; --fs-md: 1rem; --fs-lg: 1.18rem; --fs-xl: 1.5rem;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+    --r-sm: 8px; --r-md: 12px; --r-pill: 999px;
+    --e1: 0 1px 2px rgba(0,0,0,.4);
+    --e2: 0 6px 20px rgba(0,0,0,.45);
+    --e3: 0 -4px 24px rgba(0,0,0,.5);
+    --tap: 44px;
+    --focus: 0 0 0 3px rgba(217,164,65,.22);
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-/* Phone sizing: the whole dashboard is rem-based off the root, so this one knob scales all text +
-   tap targets up to a comfortable size (the d-pad arrows at 1.5rem were the only thing big enough;
-   this lifts everything toward that). Bump/lower this single value to taste. */
-html { font-size: 21px; }
+/* Phone sizing: a FLUID root so the rem-based UI scales with the viewport instead of a fixed 21px that
+   bloated everything off-screen. clamp keeps it legible on a narrow phone and caps it on a tablet
+   (WCAG 1.4.4 resize-safe). */
+html { font-size: clamp(15px, 4.1vw, 18px); }
 body {
     background: var(--bg);
     color: var(--text);
@@ -30,7 +70,7 @@ body {
 .rr-main { padding: .8rem .8rem calc(1rem + env(safe-area-inset-bottom, 0)); max-width: 900px; margin: 0 auto; }
 
 h1 { font-size: 1.4rem; margin: .2rem 0 .6rem; }
-a { color: var(--accent-hover); }
+a { color: var(--accent-bright); }
 code { background: var(--surface-2); padding: .05rem .3rem; border-radius: 4px; font-size: .85em; }
 
 .muted { color: var(--muted); }
@@ -40,24 +80,25 @@ code { background: var(--surface-2); padding: .05rem .3rem; border-radius: 4px; 
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .6rem; flex-wrap: wrap; }
 .card-head h1 { margin: 0; }
 
-.card-r { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .8rem; }
+.card-r { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: .8rem; }
 .card-r.mb, .mb { margin-bottom: .7rem; }
 .card-r > h3:first-child, .card-r > h2:first-child { margin-top: 0; }
 
 .field { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .5rem; }
-.field label { font-size: .8rem; color: var(--text-dim); }
+.field label { font-size: .8rem; color: var(--text-2); }
 .field input {
-    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
-    color: var(--text); padding: .5rem .6rem; font-size: .95rem; width: 100%;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+    color: var(--text); padding: .5rem .6rem; font-size: .95rem; width: 100%; min-height: var(--tap);
 }
+.field input:focus-visible, .btn-r:focus-visible { outline: none; box-shadow: var(--focus); }
 
-.btn-r { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: .45rem .8rem; font-size: .9rem; cursor: pointer; }
+.btn-r { background: var(--accent); color: var(--accent-ink); border: none; border-radius: var(--r-sm); padding: .45rem .9rem; font-size: .9rem; font-weight: 600; cursor: pointer; min-height: var(--tap); display: inline-flex; align-items: center; justify-content: center; gap: .3rem; }
 .btn-r:disabled { opacity: .5; cursor: default; }
-.btn-r.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-.btn-r.sm { padding: .3rem .6rem; font-size: .8rem; }
+.btn-r.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
+.btn-r.sm { padding: .3rem .7rem; font-size: .8rem; min-height: 38px; }
 
-.badge-r { font-size: .72rem; font-weight: 700; padding: .15rem .5rem; border-radius: 999px; background: var(--surface-2); }
-.badge-r.green { background: var(--green); color: #06281c; }
+.badge-r { font-size: .72rem; font-weight: 700; padding: .15rem .5rem; border-radius: var(--r-pill); background: var(--surface-2); }
+.badge-r.green { background: var(--state-ok); color: var(--state-ok-ink); }
 
 #blazor-error-ui { background: #2a1a1a; color: #fcd; bottom: 0; left: 0; right: 0; display: none; padding: .6rem 1rem; position: fixed; z-index: 1000; }
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: .75rem; top: .5rem; }

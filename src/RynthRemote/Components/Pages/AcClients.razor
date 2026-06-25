@@ -49,6 +49,44 @@
     .ac-inv-grp { font-size:.72rem; font-weight:700; margin:.4rem 0 .1rem; opacity:.9; }
     .ac-inv-cap { color:var(--muted); font-weight:400; margin-left:.3rem; }
     .ac-ico { width:1.4rem; height:1.4rem; vertical-align:middle; margin-right:.3rem; image-rendering:pixelated; border-radius:3px; }
+    .ac-inv-open .ac-inv-hint { color:var(--muted); font-size:.7rem; font-weight:400; margin-left:.4rem; }
+
+    /* ── AC parchment inventory popup ── */
+    .ac-invm-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; z-index:1000; padding:.6rem; }
+    .ac-invm { width:100%; max-width:30rem; max-height:90vh; display:flex; flex-direction:column; overflow:hidden;
+               background:linear-gradient(180deg,#e8d6ad,#d8c08c); color:#2a1d0e;
+               border:3px solid #5a3d1c; border-radius:8px; box-shadow:0 0 0 2px #2a1d0e,0 12px 40px rgba(0,0,0,.7);
+               font-family:Georgia,'Times New Roman',serif; }
+    .ac-invm-bar { display:flex; align-items:center; justify-content:space-between; padding:.45rem .6rem;
+                   background:linear-gradient(180deg,#6b4a24,#4a3014); color:#f1e3c0; border-bottom:2px solid #2a1d0e; }
+    .ac-invm-title { font-weight:700; font-size:.95rem; letter-spacing:.02em; }
+    .ac-invm-x { background:none; border:none; color:#f1e3c0; font-size:1.15rem; cursor:pointer; padding:0 .3rem; line-height:1; }
+    .ac-invm-tabs { display:flex; flex-wrap:wrap; gap:.25rem; padding:.4rem .5rem 0; }
+    .ac-invm-tab { background:#c4a772; color:#3a2810; border:2px solid #5a3d1c; border-bottom:none; border-radius:5px 5px 0 0;
+                   padding:.2rem .5rem; font-size:.72rem; cursor:pointer; font-family:inherit; }
+    .ac-invm-tab.on { background:#ecdcb4; font-weight:700; }
+    .ac-invm-tn { color:#7a5c30; margin-left:.3rem; font-size:.66rem; }
+    .ac-invm-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(3rem,1fr)); gap:.3rem; padding:.5rem;
+                    overflow-y:auto; background:#ecdcb4; border-top:2px solid #5a3d1c; }
+    .ac-invm-cell { position:relative; aspect-ratio:1; display:flex; align-items:center; justify-content:center; padding:.15rem;
+                    background:linear-gradient(160deg,#cbb486,#b89c68); border:2px solid #8a6a3a; border-radius:4px; cursor:pointer;
+                    box-shadow:inset 0 0 4px rgba(90,61,28,.4); }
+    .ac-invm-cell.sel { border-color:#e8c060; box-shadow:0 0 0 2px #e8c060,inset 0 0 4px rgba(90,61,28,.4); }
+    .ac-invm-ico { max-width:100%; max-height:100%; image-rendering:pixelated; }
+    .ac-invm-q { color:#7a5c30; font-size:1.2rem; }
+    .ac-invm-stack { position:absolute; right:1px; bottom:0; font-size:.6rem; font-weight:700; color:#fff; font-family:Arial,sans-serif;
+                     background:rgba(42,29,14,.85); border-radius:3px; padding:0 .2rem; }
+    .ac-invm-empty { grid-column:1/-1; text-align:center; color:#7a5c30; padding:1rem; }
+    .ac-invm-exam { margin:.1rem .5rem .5rem; padding:.4rem .5rem; background:#f3e8cb; border:2px solid #8a6a3a; border-radius:5px; }
+    .ac-invm-exam-h { font-weight:700; font-size:.85rem; color:#3a2810; border-bottom:1px solid #c4a772; padding-bottom:.2rem; margin-bottom:.25rem; }
+    .ac-invm-s { color:#7a5c30; font-size:.74rem; font-style:italic; }
+    .ac-invm-msg { padding:1.2rem; text-align:center; color:#5a3d1c; background:#ecdcb4; }
+    .ac-invm-foot { padding:.4rem .5rem; display:flex; justify-content:flex-end; background:linear-gradient(180deg,#d8c08c,#c4a772); border-top:2px solid #5a3d1c; }
+    /* make the shared appraisal view legible on parchment */
+    .ac-invm-exam .ac-appr { color:#2a1d0e; border-left-color:#8a6a3a; }
+    .ac-invm-exam .ac-appr .amono, .ac-invm-exam .ac-appr .adesc { color:#5a3d1c; }
+    .ac-invm-exam .ac-appr .rb { color:#9a5a10; }
+    .ac-invm-exam .ac-appr .aspells .sp { background:#d8c08c; color:#2a1d0e; }
     .ac-gear-row { display:flex; justify-content:space-between; gap:.5rem; font-size:.72rem; }
     .ac-gear-row { cursor:pointer; }
     .ac-gear-row .gn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -378,51 +416,9 @@ else
                     }
 
                     <div class="ac-gear">
-                        <button class="ac-gear-h" @onclick="@(() => ToggleInv(c.Pid))">
-                            @(_showInv.Contains(c.Pid) ? "▾" : "▸") Inventory@(InvCountLabel(c.Pid))
+                        <button class="ac-gear-h ac-inv-open" @onclick="@(() => OpenInvModal(c.Pid))">
+                            🎒 Inventory@(InvCountLabel(c.Pid)) <span class="ac-inv-hint">tap to open ▸</span>
                         </button>
-                        @if (_showInv.Contains(c.Pid))
-                        {
-                            @if (_invLoading.Contains(c.Pid) && !_invByPid.ContainsKey(c.Pid))
-                            {
-                                <div class="ac-sub">loading…</div>
-                            }
-                            else if (_invError.TryGetValue(c.Pid, out var ierr) && !string.IsNullOrEmpty(ierr))
-                            {
-                                <div class="ac-warn">&#9888; @ierr</div>
-                            }
-                            else if (_invByPid.TryGetValue(c.Pid, out var inv) && inv.ItemCount > 0)
-                            {
-                                <div class="ac-gear-list">
-                                    @foreach (var cont in inv.Containers)
-                                    {
-                                        var contItems = inv.ItemsIn(cont).ToList();
-                                        if (contItems.Count > 0)
-                                        {
-                                            <div class="ac-inv-grp">@cont.Name <span class="ac-inv-cap">@contItems.Count@(cont.Capacity > 0 ? "/" + cont.Capacity : "")</span></div>
-                                            foreach (var it in contItems)
-                                            {
-                                                <div>
-                                                    <div class="ac-gear-row" @onclick="@(() => ToggleItem(it.Id))" title="tap for appraisal">
-                                                        <span class="gn">@(it.HasAppraisal ? (_showItem.Contains(it.Id) ? "▾ " : "▸ ") : "")@if (it.IconDid != 0 && !string.IsNullOrWhiteSpace(_url)){<img class="ac-ico" loading="lazy" alt="" src="@AcStatusClient.BuildIconUrl(_url, it.IconDid, _token)" onerror="this.style.display='none'" />}@it.Name@(it.StackLabel.Length > 0 ? " " + it.StackLabel : "")</span>
-                                                        <span class="gi">@it.HexId</span>
-                                                    </div>
-                                                    @if (_showItem.Contains(it.Id) && it.HasAppraisal)
-                                                    {
-                                                        <AcAppraisal Item="it.Appraisal" />
-                                                    }
-                                                </div>
-                                            }
-                                        }
-                                    }
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="ac-sub">no inventory reported (is this client running RynthCore?)</div>
-                            }
-                            <button class="ac-pill" style="margin-top:.3rem" @onclick="@(() => LoadInventoryAsync(c.Pid))" disabled="@_invLoading.Contains(c.Pid)">@(_invLoading.Contains(c.Pid) ? "…" : "↻ Refresh")</button>
-                        }
                     </div>
 
                     @if (_showControls)
@@ -531,6 +527,93 @@ else
                 </div>
             </div>
         }
+    </div>
+}
+
+@* ── AC parchment inventory popup (one open at a time) ───────────────────────────────── *@
+@if (_invModalPid != 0)
+{
+    <div class="ac-invm-backdrop" @onclick="CloseInvModal">
+        <div class="ac-invm" @onclick:stopPropagation="true">
+            <div class="ac-invm-bar">
+                <span class="ac-invm-title">@_invModalName — Inventory</span>
+                <button class="ac-invm-x" @onclick="CloseInvModal" title="close">✕</button>
+            </div>
+            @if (_invByPid.TryGetValue(_invModalPid, out var inv) && inv.ItemCount > 0)
+            {
+                <div class="ac-invm-tabs">
+                    @foreach (var cont in inv.Containers)
+                    {
+                        uint cid = cont.Id;
+                        <button class="ac-invm-tab @(_invTabId == cid ? "on" : "")" @onclick="@(() => SelectTab(cid))">
+                            @cont.Name<span class="ac-invm-tn">@inv.ItemsIn(cont).Count()@(cont.Capacity > 0 ? "/" + cont.Capacity : "")</span>
+                        </button>
+                    }
+                </div>
+                var curCont = inv.Containers.FirstOrDefault(x => x.Id == _invTabId) ?? inv.Containers.FirstOrDefault();
+                var cells = curCont != null ? inv.ItemsIn(curCont).ToList() : new List<AcInventoryItem>();
+                <div class="ac-invm-grid">
+                    @foreach (var it in cells)
+                    {
+                        <button class="ac-invm-cell @(_invSelItem == it.Id ? "sel" : "")" @onclick="@(() => SelectInvItem(it))" title="@it.Name">
+                            @if (it.IconDid != 0 && !string.IsNullOrWhiteSpace(_url))
+                            {
+                                <img class="ac-invm-ico" loading="lazy" alt="" src="@AcStatusClient.BuildIconUrl(_url, it.IconDid, _token)" onerror="this.style.visibility='hidden'" />
+                            }
+                            else
+                            {
+                                <span class="ac-invm-q">?</span>
+                            }
+                            @if (it.StackCount > 1)
+                            {
+                                <span class="ac-invm-stack">@(it.StackCount > 999 ? (it.StackCount / 1000) + "k" : it.StackCount.ToString())</span>
+                            }
+                        </button>
+                    }
+                    @if (cells.Count == 0)
+                    {
+                        <div class="ac-invm-empty">(empty)</div>
+                    }
+                </div>
+                @if (_invSelItem != 0)
+                {
+                    var sel = inv.Items.FirstOrDefault(i => i.Id == _invSelItem);
+                    if (sel != null)
+                    {
+                        <div class="ac-invm-exam">
+                            <div class="ac-invm-exam-h">@sel.Name@(sel.StackCount > 1 ? $" ×{sel.StackCount:N0}" : "")</div>
+                            @if (sel.Appraisal is { } a && a.HasAppraisal)
+                            {
+                                <AcAppraisal Item="a" />
+                            }
+                            else if (_assessing.Contains(sel.Id))
+                            {
+                                <div class="ac-invm-s">appraising…</div>
+                            }
+                            else
+                            {
+                                <div class="ac-invm-s">no appraisal yet — tap the item to assess it</div>
+                            }
+                        </div>
+                    }
+                }
+            }
+            else if (_invLoading.Contains(_invModalPid))
+            {
+                <div class="ac-invm-msg">opening pack…</div>
+            }
+            else if (_invError.TryGetValue(_invModalPid, out var ierr) && !string.IsNullOrEmpty(ierr))
+            {
+                <div class="ac-invm-msg ac-warn">&#9888; @ierr</div>
+            }
+            else
+            {
+                <div class="ac-invm-msg">no inventory reported (is this client running RynthCore?)</div>
+            }
+            <div class="ac-invm-foot">
+                <button class="ac-pill" @onclick="@(() => LoadInventoryAsync(_invModalPid))" disabled="@_invLoading.Contains(_invModalPid)">@(_invLoading.Contains(_invModalPid) ? "…" : "↻ Refresh")</button>
+            </div>
+        </div>
     </div>
 }
 
@@ -760,18 +843,52 @@ else
     private readonly HashSet<uint> _showItem = new();            // item ids whose appraisal is expanded
     private void ToggleItem(uint id) { if (!_showItem.Add(id)) _showItem.Remove(id); }
 
-    // ── Inventory drawer (full inventory per client; its own on-demand /inventory fetch — NOT in the
-    // status feed, so 100s of items never ride the live push). Lazy-loaded on open; manual Refresh. ──
-    private readonly HashSet<int> _showInv = new();                          // pids whose inventory drawer is open
+    // ── Inventory (AC-style parchment popup; its own on-demand /inventory fetch — NOT in the status
+    // feed, so 100s of items never ride the live push). One modal open at a time. ──
     private readonly HashSet<int> _invLoading = new();                       // pids with an in-flight fetch
     private readonly Dictionary<int, AcInventoryPayload> _invByPid = new();  // last fetched inventory per pid
     private readonly Dictionary<int, string> _invError = new();             // last fetch error per pid
+    private int _invModalPid;            // pid of the open inventory modal (0 = closed)
+    private string _invModalName = "";   // character name shown in the modal title
+    private uint _invTabId;              // selected container (pack) in the modal
+    private uint _invSelItem;            // selected item for the examine panel (0 = none)
+    private readonly HashSet<uint> _assessing = new();   // item ids with a tap-to-appraise Assess in flight
 
-    private async Task ToggleInv(int pid)
+    private async Task OpenInvModal(int pid)
     {
-        if (!_showInv.Add(pid)) { _showInv.Remove(pid); StateHasChanged(); return; }
-        await LoadInventoryAsync(pid);   // lazy-load on open
+        _invModalPid = pid;
+        _invModalName = ClientName(pid);
+        _invTabId = 0; _invSelItem = 0;
+        StateHasChanged();
+        await LoadInventoryAsync(pid);
+        // Default tab = Main Pack if present, else the first container.
+        if (_invByPid.TryGetValue(pid, out var inv) && inv.Containers.Count > 0)
+            _invTabId = (inv.Containers.FirstOrDefault(x => x.Kind == "main") ?? inv.Containers[0]).Id;
+        if (!_disposed) StateHasChanged();
     }
+
+    private void CloseInvModal() { _invModalPid = 0; _invSelItem = 0; StateHasChanged(); }
+    private void SelectTab(uint containerId) { _invTabId = containerId; _invSelItem = 0; StateHasChanged(); }
+
+    /// Tap an item: select it for the examine panel, and if it isn't appraised yet, fire ONE Assess
+    /// (tap-to-appraise) and re-fetch shortly to pick up the appraisal the engine cached.
+    private async Task SelectInvItem(AcInventoryItem it)
+    {
+        _invSelItem = it.Id;
+        if (it.HasAppraisal || _invModalPid == 0 || string.IsNullOrWhiteSpace(_url)) { StateHasChanged(); return; }
+        if (!_assessing.Add(it.Id)) { StateHasChanged(); return; }   // an Assess for this item is already in flight
+        StateHasChanged();
+        int pid = _invModalPid;
+        await Status.PostCommandAsync(_url, _token, pid, "assess", it.Id.ToString(), _cts?.Token ?? CancellationToken.None);
+        // plugin Assess → 0xC9 → engine cache → RynthAi ~3s scan → file → agent. Re-fetch once after that.
+        try { await Task.Delay(4000, _cts?.Token ?? CancellationToken.None); } catch { }
+        if (!_disposed && _invModalPid == pid) await LoadInventoryAsync(pid);
+        _assessing.Remove(it.Id);
+        if (!_disposed) StateHasChanged();
+    }
+
+    private string ClientName(int pid)
+        => _result?.Payload?.Clients?.FirstOrDefault(c => c.Pid == pid)?.DisplayName ?? $"PID {pid}";
 
     private async Task LoadInventoryAsync(int pid)
     {

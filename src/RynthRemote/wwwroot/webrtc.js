@@ -85,6 +85,26 @@ window.rynthHd = {
   },
 };
 
+// Short alert beep for a critical alert (death / wedge). iOS WKWebView blocks audio until a user gesture,
+// so the shared AudioContext is unlocked on the first tap anywhere; until then beeps are silently dropped.
+window.rynthBeep = (function () {
+  let ctx = null;
+  const ensure = () => { try { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); } catch (e) {} return ctx; };
+  try { const unlock = () => { ensure(); document.removeEventListener('pointerdown', unlock); }; document.addEventListener('pointerdown', unlock, { once: true }); } catch (e) {}
+  return function () {
+    try {
+      const c = ensure(); if (!c) return;
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.0001;
+      o.connect(g); g.connect(c.destination);
+      const t = c.currentTime;
+      g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.start(t); o.stop(t + 0.36);
+    } catch (e) {}
+  };
+})();
+
 // Chat-log scroll helper. nearBottom is read from live DOM metrics (not stale C# state) so auto-follow
 // only kicks in when the reader is already at the newest line; a reader scrolled up into history is left alone.
 window.rynthScroll = {

@@ -216,6 +216,26 @@
     .rr-w-steps span { font-size:.8rem; color:var(--text-2); border-left:2px solid var(--accent-deep); padding-left:.5rem; }
     .rr-w-help { display:block; font-size:.74rem; color:var(--muted); margin-top:.1rem; line-height:1.35; }
     .rr-w-opt { font-size:.7rem; color:var(--muted); font-weight:400; }
+    /* Healthy→critical alert banner stack (in-app, newest on top) */
+    .ac-alerts { display:flex; flex-direction:column; gap:.35rem; margin-bottom:.6rem; }
+    .ac-alert { display:flex; align-items:center; gap:.5rem; padding:.5rem .6rem; min-height:44px; border:1px solid var(--border); border-radius:var(--r-sm); background:var(--surface-2); cursor:pointer; }
+    .ac-alert.crit { border-color:var(--red); }
+    .ac-alert-rail { width:4px; align-self:stretch; border-radius:2px; flex:none; }
+    .ac-alert-txt { flex:1; min-width:0; font-size:.84rem; }
+    .ac-alert-x { background:none; border:none; color:var(--muted); font-size:1.2rem; min-width:40px; min-height:40px; cursor:pointer; }
+    /* Council (fleet-wide batch control) */
+    .ac-council-scope { font-size:.82rem; color:var(--text-2); margin:.2rem 0 .55rem; display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+    .ac-council-acts { display:grid; grid-template-columns:repeat(2,1fr); gap:.4rem; margin-bottom:.5rem; }
+    .ac-council-acts .ac-pill { min-height:44px; }
+    .ac-link { background:none; border:none; color:var(--accent-bright); cursor:pointer; font-size:.8rem; padding:0 .2rem; text-decoration:underline; }
+    /* Leaderboard (ranked live fleet) */
+    .ac-lb { margin-bottom:.6rem; }
+    .ac-lb-row { display:flex; align-items:center; gap:.5rem; min-height:44px; }
+    .ac-lb-rank { font-variant-numeric:tabular-nums; color:var(--muted); width:1.6rem; text-align:right; flex:none; }
+    .ac-lb-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ac-lb-val { font-weight:700; font-variant-numeric:tabular-nums; color:var(--accent); white-space:nowrap; min-width:3rem; text-align:right; }
+    .ac-lb-row.stale { opacity:.7; }
+    .ac-lb-row.stale .ac-lb-val { color:var(--amber); }
 </style>
 
 <div class="card-head">
@@ -229,6 +249,7 @@
 
 <div class="ac-tabs">
     <button class="ac-tab @(_view == "clients" ? "on" : "")" @onclick="@(() => SwitchView("clients"))">Clients</button>
+    <button class="ac-tab @(_view == "council" ? "on" : "")" @onclick="@(() => SwitchView("council"))">Council</button>
     <button class="ac-tab @(_view == "archive" ? "on" : "")" @onclick="@(() => SwitchView("archive"))">Archive</button>
 </div>
 
@@ -275,7 +296,115 @@
     </div>
 }
 
-@if (_view == "archive")
+@{ var live = _alerts.Where(a => (DateTime.UtcNow - a.AtUtc).TotalSeconds < 60).ToList(); }
+@if (live.Count > 0)
+{
+    <div class="ac-alerts">
+        @foreach (var a in live)
+        {
+            var col = a.Sev == "crit" ? "#f87171" : "#fbbf24";
+            <div class="ac-alert @a.Sev" @key="a.Id" @onclick="@(() => JumpToAlert(a))">
+                <span class="ac-alert-rail" style="background:@col"></span>
+                <span class="ac-alert-txt">@a.Text</span>
+                <button class="ac-alert-x" @onclick:stopPropagation="true" @onclick="@(() => DismissAlert(a.Id))">×</button>
+            </div>
+        }
+    </div>
+}
+
+@if (_view == "council")
+{
+    if (string.IsNullOrWhiteSpace(_url))
+    {
+        <div class="card-r"><p class="muted" style="margin-top:0">Set your StatusAgent URL (Connection) to control the fleet.</p></div>
+    }
+    else if (_result?.Payload is null)
+    {
+        <p class="loading">Connecting to @_url …</p>
+    }
+    else
+    {
+        var all = _result.Payload.Clients;
+        var set = CouncilSet();
+        var setPids = set.Select(c => c.Pid).ToList();
+        <div class="ac-roll">
+            <button class="ac-chip @(_fleetFilter == "" ? "on" : "")" @onclick="@(() => SetFleetFilter(""))"><span class="ac-chip-n">@all.Count</span> all</button>
+            @foreach (var g in FleetGroups(all))
+            {
+                string k = g.Key;
+                <button class="ac-chip @(g.Attn ? "attn" : "") @(_fleetFilter == k ? "on" : "")" @onclick="@(() => SetFleetFilter(k))"><span class="ac-gemdot" style="background:@StateColor(k)"></span><span class="ac-chip-n">@g.Count</span> @k</button>
+            }
+        </div>
+        <div class="ac-council-scope">
+            Acting on <b>@set.Count</b> of @all.Count @(set.Count == 1 ? "client" : "clients")@(string.IsNullOrEmpty(_fleetFilter) ? "" : " · " + _fleetFilter)
+            @if (!string.IsNullOrEmpty(_fleetFilter)) { <button class="ac-link" @onclick="@(() => SetFleetFilter(""))">whole fleet</button> }
+            <button class="ac-link" style="margin-left:auto" @onclick="ToggleAlertSound" title="beep on a critical alert (death / wedge) while the app is open">🔔 alert sound @(_alertSound ? "on" : "off")</button>
+        </div>
+
+        <div class="ac-council-acts">
+            <button class="ac-pill" disabled="@(set.Count == 0)" @onclick="@(() => BatchCommandAsync("macro", "true", setPids))">▶ Start all</button>
+            <button class="ac-pill" disabled="@(set.Count == 0)" @onclick="@(() => OpenFleetConfirm("macro", "false", $"Stop all {set.Count} clients?", "Pauses botting on the whole scoped fleet."))">■ Stop all</button>
+            <button class="ac-pill" disabled="@(set.Count == 0)" @onclick="@(() => BatchCommandAsync("forceRebuff", "true", setPids))">✦ Rebuff all</button>
+            <button class="ac-pill" disabled="@(set.Count == 0)" @onclick="@(() => BatchCommandAsync("clearBusy", "true", setPids))">clear busy all</button>
+            <button class="ac-pill" disabled="@(set.Count == 0)" @onclick="@(() => BatchCommandAsync("cancelRebuff", "true", setPids))">cancel rebuff all</button>
+            <button class="ac-pill" disabled="@(set.Count == 0)" @onclick="@(() => BatchCommandAsync("hideUi", "true", setPids))">Hide UI all</button>
+            <button class="ac-pill" disabled="@(set.Count == 0)" @onclick="@(() => BatchCommandAsync("hideUi", "false", setPids))">Show UI all</button>
+            <button class="ac-pill ac-danger" disabled="@(set.Count == 0)" @onclick="@(() => OpenFleetConfirm("closeClient", "true", $"Close all {set.Count} clients?", "This shuts down the game clients."))">Close all</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_batchMsg)) { <div class="ac-cmd-msg">@_batchMsg</div> }
+
+        <div class="ac-lb">
+            <button class="ac-gear-h" @onclick="@(() => _lbExpanded = !_lbExpanded)">
+                @(_lbExpanded ? "▾" : "▸") Leaderboard
+            </button>
+            @if (_lbExpanded)
+            {
+                var ranked = set.OrderBy(c => (StaleKill(c) || !c.Healthy) ? 1 : 0).ThenByDescending(c => LbValue(c, _lbMetric)).ThenBy(c => c.DisplayName).ToList();
+                double max = ranked.Count > 0 ? Math.Max(1, ranked.Max(c => LbValue(c, _lbMetric))) : 1;
+                <div class="ac-ctabs">
+                    @foreach (var m in LbMetrics)
+                    {
+                        string mk = m.Key;
+                        <button class="ac-pill ac-ctab @(_lbMetric == mk ? "on" : "")" @onclick="@(() => SetLbMetric(mk))">@m.Label</button>
+                    }
+                </div>
+                @for (int i = 0; i < ranked.Count; i++)
+                {
+                    var c = ranked[i];
+                    bool stalled = StaleKill(c) || !c.Healthy;
+                    double val = LbValue(c, _lbMetric);
+                    <div class="ac-lb-row @(stalled ? "stale" : "")">
+                        <span class="ac-lb-rank">@(i + 1)</span>
+                        <span class="ac-gem" style="background:@StateColor(c.State)"></span>
+                        <span class="ac-lb-name">@c.DisplayName</span>
+                        <span class="ac-bar" style="flex:0 0 64px"><span style="width:@((int)Math.Clamp(val / max * 100, 0, 100))%;background:var(--accent)"></span></span>
+                        <span class="ac-lb-val">@FmtRate(val)</span>
+                    </div>
+                }
+                @if (ranked.Count == 0) { <div class="ac-sub">no clients in scope</div> }
+            }
+        </div>
+
+        <div class="ac-grid">
+            @foreach (var c in set.OrderByDescending(c => !c.Healthy).ThenBy(c => c.Character))
+            {
+                <div class="ac-card @(c.Healthy ? "" : "bad")" @key="c.Pid">
+                    <div class="ac-rowhead" @onclick="@(() => OpenDeck(c.Pid))">
+                        <span class="ac-gem" style="background:@StateColor(c.State)" title="@c.State"></span>
+                        <div class="ac-rowmain">
+                            <div class="ac-name">@c.DisplayName</div>
+                            <div class="ac-rowsub">@c.State@(string.IsNullOrWhiteSpace(c.BotAction) ? "" : " · " + c.BotAction)</div>
+                        </div>
+                        <span class="ac-pill ac-macro @(EffOn(c.Pid, "macro", c.MacroRunning) ? "on" : "") @(IsApplying(c.Pid, "macro") ? "applying" : "")">@(EffOn(c.Pid, "macro", c.MacroRunning) ? "■" : "▶")</span>
+                        <span class="ac-rowchev">›</span>
+                    </div>
+                </div>
+            }
+            @if (set.Count == 0) { <div class="card-r">No clients in this scope.</div> }
+        </div>
+    }
+}
+else if (_view == "archive")
 {
     <div class="card-head" style="margin-bottom:.4rem">
         <span class="ac-sub">@(_runs is { Count: > 0 } ? $"{_runs.Count} run(s)" : "Run history")</span>
@@ -766,6 +895,23 @@ else
     </div>
 }
 
+@* ── Fleet-confirm countdown (Stop all / Close all) ──────────────────────────────────── *@
+@if (_fleetConfirm is { } fc)
+{
+    <div class="ac-cc-back" @onclick="CancelFleetConfirm">
+        <div class="ac-cc" @onclick:stopPropagation="true">
+            <div class="ac-cc-title">@fc.Title</div>
+            <div class="ac-sub">@fc.Sub</div>
+            <div class="ac-cc-ring">@_fleetCountdown</div>
+            <div class="ac-sub">auto-cancels in @_fleetCountdown s</div>
+            <div class="ac-cc-row">
+                <button class="ac-pill" style="flex:1" @onclick="CancelFleetConfirm">Cancel</button>
+                <button class="ac-pill ac-danger" style="flex:1" @onclick="ConfirmFleet">Confirm</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private const string UrlKey = "ac.status.url";
     private const string TokenKey = "ac.status.token";
@@ -954,6 +1100,7 @@ else
 
     private void OnResumed()
     {
+        _alertsNeedRebase = true;   // swallow the backlog from while we were backgrounded — rebaseline on the first reconnect snapshot
         if (_streaming.Count == 0 && _hdShownPid == null) return;
         foreach (int pid in _streaming)                          // iOS dropped the MJPEG streams — reconnect each
             _epochByPid[pid] = (_epochByPid.TryGetValue(pid, out int e) ? e : 0) + 1;
@@ -1013,6 +1160,186 @@ else
     }
     private void CancelCloseModal() { _closeCts?.Cancel(); _closeModalPid = 0; if (!_disposed) _ = InvokeAsync(StateHasChanged); }
     private async Task ConfirmCloseModal(AcClientStatus c) { _closeCts?.Cancel(); _closeModalPid = 0; await SendCommand(c, "closeClient", "true"); }
+
+    // ── Healthy→critical alerts (in-app / foreground only; transition-only, no 1s spam) ──
+    // Real "buzz my phone while the app is closed" push is NOT here: the WS/poll loops suspend when iOS
+    // backgrounds us, so no detection runs; on resume the 3s rebaseline guard deliberately swallows the
+    // backlog. APNs would need an Apple push cert + device-token registration + agent-side push — a separate
+    // initiative that breaks this phase's no-agent-change rule. Documented as future work.
+    private readonly Dictionary<int, (string State, int Deaths, bool Stale)> _prevSnap = new();
+    private sealed record AlertItem(long Id, int Pid, string Kind, string Text, string Sev, DateTime AtUtc);
+    private readonly List<AlertItem> _alerts = new();
+    private long _alertSeq;
+    private readonly Dictionary<string, DateTime> _alertCooldown = new();   // "pid:kind" -> last raised (flap guard)
+    private bool _alertsNeedRebase = true;                                  // rebaseline (no fire) on the FIRST snapshot after cold-start / resume / URL-change — latency-proof
+    private bool _alertSound;                                               // opt-in beep on a crit alert
+    private const string AlertSoundKey = "ac.alert.sound";
+    private static readonly HashSet<string> CritStates = new(StringComparer.OrdinalIgnoreCase) { "wedged", "hung", "dead" };
+
+    // Repopulate the baseline from the current snapshot WITHOUT firing (cold start / resume / URL change).
+    private void RebaseSnap(List<AcClientStatus> clients)
+    {
+        _prevSnap.Clear();
+        foreach (var c in clients)
+            if (!string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase))
+                _prevSnap[c.Pid] = (c.State, c.DeathsSession, StaleKill(c));
+    }
+
+    // Diff each fresh snapshot against the previous one and raise an alert ONLY on a per-pid transition.
+    // Called right after ReconcilePending at both feed-landing sites (poll + WS push).
+    private void ProcessAlerts(AcStatusResult r)
+    {
+        if (r is not { Ok: true, Payload: not null }) return;            // never touch the baseline on a failed/partial payload
+        var clients = r.Payload.Clients;
+        if (_alertsNeedRebase)      // first snapshot after cold-start / resume / URL-change → rebaseline silently, no backlog dump (regardless of reconnect latency)
+        {
+            RebaseSnap(clients);
+            _alertsNeedRebase = false;
+            return;
+        }
+        var live = new HashSet<int>();
+        foreach (var c in clients)
+        {
+            if (string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase)) continue;   // no bot fields
+            live.Add(c.Pid);
+            bool curStale = StaleKill(c);
+            if (_prevSnap.TryGetValue(c.Pid, out var p))
+            {
+                if (!CritStates.Contains(p.State) && CritStates.Contains(c.State))
+                    Raise(c.Pid, "down", "crit", $"{c.DisplayName} went {c.State}");
+                if (c.DeathsSession > p.Deaths)
+                    Raise(c.Pid, "death", "crit", $"{c.DisplayName} died (death #{c.DeathsSession})");
+                if (curStale && !p.Stale)
+                    Raise(c.Pid, "stall", "warn", $"{c.DisplayName} stalled — no kill in {Since(c.SecsSinceLastKill)}");
+            }
+            _prevSnap[c.Pid] = (c.State, c.DeathsSession, curStale);     // overwrite each tick ⇒ an ongoing wedge never re-fires
+        }
+        if (_prevSnap.Count > live.Count)                               // prune vanished boxes
+            foreach (var k in _prevSnap.Keys.Where(k => !live.Contains(k)).ToList()) _prevSnap.Remove(k);
+    }
+
+    private void Raise(int pid, string kind, string sev, string text)
+    {
+        string key = pid + ":" + kind;
+        if (_alertCooldown.TryGetValue(key, out var last) && (DateTime.UtcNow - last).TotalSeconds < 60) return;   // flap guard
+        _alertCooldown[key] = DateTime.UtcNow;
+        _alerts.Insert(0, new AlertItem(++_alertSeq, pid, kind, text, sev, DateTime.UtcNow));
+        while (_alerts.Count > 5) _alerts.RemoveAt(_alerts.Count - 1);
+        if (_alertSound && sev == "crit") { try { _ = JS.InvokeVoidAsync("rynthBeep"); } catch { } }
+    }
+
+    private void DismissAlert(long id) { _alerts.RemoveAll(a => a.Id == id); StateHasChanged(); }
+    private void JumpToAlert(AlertItem a) { _alerts.RemoveAll(x => x.Id == a.Id); _view = "clients"; OpenDeck(a.Pid); }
+
+    // ── Council (fleet-wide batch control) + Leaderboard + fleet-confirm state ──
+    private string? _batchMsg;                          // transient "sent to N / N failed" feedback
+    private string _lbMetric = "khr";                  // leaderboard metric: khr | xphr | kills
+    private bool _lbExpanded = true;
+    private const string LbMetricKey = "ac.lb.metric";
+    private sealed record FleetConfirm(string Action, string Value, string Title, string Sub, IReadOnlyList<int> Pids);
+    private FleetConfirm? _fleetConfirm;
+    private int _fleetCountdown;
+    private CancellationTokenSource? _fleetCts;
+
+    // Clients in the current fleet-filter scope (reuses the P1 roll-up filter), excluding heartbeat-log
+    // clients (no bot control fields). Empty filter = whole fleet.
+    private List<AcClientStatus> CouncilSet()
+        => (_result?.Payload?.Clients is { } cs ? FilterClients(cs) : Enumerable.Empty<AcClientStatus>())
+            .Where(c => !string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    // Fan one action out to many clients at once: concurrent POSTs + ONE settle + ONE refresh (never loop
+    // the per-client SendCommand — that's N×1.2s). PostCommandAsync returns Fail (never throws) on a
+    // network/agent failure, so a dead box can't break the batch; the 6s ReconcilePending timeout clears
+    // any pill whose POST failed. (It DOES throw on parent-token cancellation — guarded below.)
+    private async Task BatchCommandAsync(string action, string value, IReadOnlyList<int> pids)
+    {
+        if (pids.Count == 0) return;
+        if (value is "true" or "false")                         // optimistic flip for stateful toggles the feed reconciles
+        {
+            var clients = _result?.Payload?.Clients;
+            foreach (var pid in pids)
+            {
+                var c = clients?.FirstOrDefault(x => x.Pid == pid);
+                if (c != null && ActualToggle(c, action) != null)
+                {
+                    _pending[PKey(pid, action)] = value == "true";
+                    _pendingAt[PKey(pid, action)] = DateTime.UtcNow;
+                }
+            }
+        }
+        _batchMsg = "sending…";
+        StateHasChanged();                                      // every affected row shimmers at once
+        var ct = _cts?.Token ?? CancellationToken.None;
+        AcCommandResult[] results;
+        try { results = await Task.WhenAll(pids.Select(p => Status.PostCommandAsync(_url, _token, p, action, value, ct))); }
+        catch (OperationCanceledException) { return; }   // page disposed / host switched mid-batch — abandon quietly
+        int ok = results.Count(r => r.Ok), fail = results.Length - ok;
+        _batchMsg = fail == 0 ? $"✓ sent to {ok}" : $"sent {ok}, {fail} failed";
+        StateHasChanged();
+        try { await Task.Delay(1200, ct); } catch { }           // ONE settle, not per-pid
+        if (!_disposed) await RefreshOnceAsync(ct);             // ONE refresh → ReconcilePending clears all shimmers together
+        _ = ClearBatchMsgLater();
+    }
+
+    private async Task ClearBatchMsgLater()
+    {
+        try { await Task.Delay(3000); } catch { }
+        if (_disposed) return;
+        _batchMsg = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // Fleet confirm = a parallel countdown to the single-pid close modal (kept separate to keep blast radius
+    // small). SNAPSHOTS the target pids at open time, so a filter change before confirm can't widen the set.
+    private void OpenFleetConfirm(string action, string value, string title, string sub)
+    {
+        var pids = CouncilSet().Select(c => c.Pid).ToList();
+        if (pids.Count == 0) return;
+        _fleetConfirm = new(action, value, title, sub, pids);
+        _fleetCountdown = 5;
+        _fleetCts?.Cancel(); _fleetCts = new();
+        StateHasChanged();
+        _ = FleetCountdownLoop(_fleetCts.Token);
+    }
+    private async Task FleetCountdownLoop(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                _fleetCountdown--;
+                if (_fleetCountdown <= 0) { CancelFleetConfirm(); return; }   // auto-cancel, never auto-fire
+                if (!_disposed) await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+    private void CancelFleetConfirm() { _fleetCts?.Cancel(); _fleetConfirm = null; if (!_disposed) _ = InvokeAsync(StateHasChanged); }
+    private async Task ConfirmFleet()
+    {
+        var fc = _fleetConfirm; if (fc is null) return;
+        _fleetCts?.Cancel(); _fleetConfirm = null;
+        await BatchCommandAsync(fc.Action, fc.Value, fc.Pids);
+    }
+
+    // ── Leaderboard (live ranking of the scoped fleet) ──
+    private static readonly (string Key, string Label)[] LbMetrics = { ("khr", "kills/hr"), ("xphr", "xp/hr"), ("kills", "kills") };
+    private static double LbValue(AcClientStatus c, string m) => m switch { "xphr" => c.XpPerHour, "kills" => c.SessionKills, _ => c.KillsPerHour };
+    private async Task SetLbMetric(string m)
+    {
+        if (_lbMetric == m) return;
+        _lbMetric = m;
+        try { await SettingsSvc.SetAsync(LbMetricKey, m); } catch { }
+        StateHasChanged();
+    }
+    private async Task ToggleAlertSound()
+    {
+        _alertSound = !_alertSound;
+        try { await SettingsSvc.SetAsync(AlertSoundKey, _alertSound ? "true" : "false"); } catch { }
+        StateHasChanged();
+    }
 
     // ── Fleet overview (collapsible glance-rows + roll-up state filter) ──
     private string _fleetFilter = "";                  // "" = all; otherwise a state string
@@ -1287,6 +1614,9 @@ else
         _tokenEdit = _token ?? "";
         if (int.TryParse(await SettingsSvc.GetAsync(PresetKey, "1"), out int pi))
             _defaultPreset = Math.Clamp(pi, 0, Presets.Length - 1);
+        _alertSound = await SettingsSvc.GetAsync(AlertSoundKey, "false") == "true";
+        _lbMetric = await SettingsSvc.GetAsync(LbMetricKey, "khr");
+        _alertsNeedRebase = true;   // rebaseline (no fire) on the first snapshot
         StreamLifecycle.Resumed += OnResumed;
         StreamLifecycle.Suspended += OnSuspended;
         _cts = new CancellationTokenSource();
@@ -1333,6 +1663,7 @@ else
                 || !string.Equals(requestedUrl, _url, StringComparison.Ordinal)) return false;
             _result = r;
             ReconcilePending();   // clear optimistic toggle states the feed now confirms
+            ProcessAlerts(r);     // raise an in-app alert on any healthy→critical transition
             if (_held.Count > 0) ReconcileHeldWithFeed();   // release any held pid that just left the feed
             await InvokeAsync(StateHasChanged);
             return r.Payload is not null;   // false on a network/agent failure → loop retries soon
@@ -1364,6 +1695,7 @@ else
                         _lastFeedAtUtc = DateTime.UtcNow;
                         _result = r;
                         ReconcilePending();   // clear optimistic toggle states the feed now confirms
+                        ProcessAlerts(r);     // raise an in-app alert on any healthy→critical transition
                         if (r.Payload is not null && _held.Count > 0) ReconcileHeldWithFeed();
                         _ = InvokeAsync(StateHasChanged);
                     }, conn.Token);
@@ -1391,6 +1723,7 @@ else
         _savedConfig = true;
         _showConfig = false;
         _result = null;
+        _alertsNeedRebase = true;       // new host → rebaseline alerts on the first snapshot, don't fire
         _runs = null; _runsError = null;           // drop cached run history; it reloads against the new host
         _lastFeedAtUtc = DateTime.MinValue;        // let the poll take over until the feed reconnects
         try { _feedConnCts?.Cancel(); } catch { }  // drop the old-host WS; the feed loop re-opens on the new URL
@@ -1560,6 +1893,7 @@ else
         if (_hdShownPid != null) { HdController.Hide(); try { _ = JS.InvokeVoidAsync("rynthHd.stopTrack"); } catch { } _hdShownPid = null; }
         _hdRef?.Dispose(); _hdRef = null;
         _closeCts?.Cancel();
+        _fleetCts?.Cancel();
         StreamLifecycle.Resumed -= OnResumed;
         StreamLifecycle.Suspended -= OnSuspended;
         _cts?.Cancel();

@@ -242,6 +242,17 @@
     .ac-map-wrap { position:relative; width:100%; will-change:transform; }
     .ac-map-img { position:absolute; display:block; image-rendering:pixelated; -webkit-user-drag:none; user-select:none; }
     .ac-map-ovl { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+    /* Advanced settings form */
+    .ac-set-bar { display:flex; gap:.3rem; align-items:center; margin:.3rem 0; }
+    .ac-set-grp { margin:.15rem 0; }
+    .ac-set-row { display:flex; align-items:center; gap:.5rem; min-height:40px; padding:.1rem 0 .1rem .6rem; }
+    .ac-set-lbl { flex:1; min-width:0; font-size:.8rem; }
+    .ac-set-lbl.applying { color:var(--accent-bright); }
+    .ac-set-step { display:flex; align-items:center; gap:.35rem; flex:none; }
+    .ac-set-step .ac-pill { min-width:40px; }
+    .ac-set-val { min-width:3.4rem; text-align:center; font-variant-numeric:tabular-nums; font-weight:700; }
+    .ac-set-val.applying { color:var(--accent-bright); }
+    .ac-set-seg { display:flex; gap:.2rem; flex-wrap:wrap; justify-content:flex-end; flex:none; }
 </style>
 
 <div class="card-head">
@@ -785,6 +796,77 @@ else
                                     @if (_cmdMsg.TryGetValue(c.Pid, out var cm) && !string.IsNullOrEmpty(cm))
                                     {
                                         <div class="ac-cmd-msg">@cm</div>
+                                    }
+                                    <div class="ac-gear">
+                                        <button class="ac-gear-h ac-inv-open" @onclick="@(() => ToggleSettings(c.Pid))">
+                                            ⚙ All settings <span class="ac-inv-hint">@(_settingsOpen ? "▾ close" : "▸ open")</span>
+                                        </button>
+                                    </div>
+                                    @if (_settingsOpen && _settingsPid == c.Pid)
+                                    {
+                                        if (_settingsLoading && _settingsValues == null)
+                                        {
+                                            <p class="loading">Loading settings…</p>
+                                        }
+                                        else if (_settingsError != null)
+                                        {
+                                            <div class="card-r"><p class="ac-warn" style="margin-top:0">&#9888; @_settingsError</p></div>
+                                        }
+                                        else if (_settingsValues == null || _settingsValues.Count == 0)
+                                        {
+                                            <div class="ac-sub">No settings reported — is this client running RynthAi with status export on?</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="ac-set-bar">
+                                                <input class="ac-chat-input" placeholder="search settings…" value="@_settingsSearch" @oninput="@(e => _settingsSearch = e.Value?.ToString() ?? string.Empty)" />
+                                                <button class="ac-pill" @onclick="@(() => LoadSettings(c.Pid, false))" title="refresh">↻</button>
+                                            </div>
+                                            @foreach (var g in AcSettingsSchema.Groups)
+                                            {
+                                                var rows = AcSettingsSchema.All.Where(d => d.Group == g && SettingsMatch(d)).ToList();
+                                                if (rows.Count == 0) { continue; }
+                                                bool gopen = _settingsGroupsOpen.Contains(g) || !string.IsNullOrWhiteSpace(_settingsSearch);
+                                                <div class="ac-set-grp">
+                                                    <button class="ac-gear-h" @onclick="@(() => ToggleSettingsGroup(g))">@(gopen ? "▾" : "▸") @g <span class="ac-sub">(@rows.Count)</span></button>
+                                                    @if (gopen)
+                                                    {
+                                                        foreach (var d in rows)
+                                                        {
+                                                            <div class="ac-set-row">
+                                                                <span class="ac-set-lbl @(IsSetPending(d.Key) ? "applying" : "")">@d.Label</span>
+                                                                @if (d.Type == AcSettingType.Bool)
+                                                                {
+                                                                    <button class="ac-pill @(CurBool(d) ? "on" : "") @(IsSetPending(d.Key) ? "applying" : "")" @onclick="@(() => ToggleSetting(d))">@(CurBool(d) ? "On" : "Off")</button>
+                                                                }
+                                                                else if (d.Type == AcSettingType.Enum && d.Options != null)
+                                                                {
+                                                                    <div class="ac-set-seg">
+                                                                        @for (int oi = 0; oi < d.Options.Length; oi++)
+                                                                        {
+                                                                            int idx = oi;
+                                                                            <button class="ac-pill ac-ctab @(CurEnum(d) == idx ? "on" : "")" @onclick="@(() => SetEnum(d, idx))">@d.Options[idx]</button>
+                                                                        }
+                                                                    </div>
+                                                                }
+                                                                else if (d.Type == AcSettingType.ReadOnly)
+                                                                {
+                                                                    <span class="ac-sub">@CurText(d)</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <div class="ac-set-step">
+                                                                        <button class="ac-pill" @onclick="@(() => StepSetting(d, -1))">−</button>
+                                                                        <span class="ac-set-val @(IsSetPending(d.Key) ? "applying" : "")">@FmtNum(d)</span>
+                                                                        <button class="ac-pill" @onclick="@(() => StepSetting(d, 1))">+</button>
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                        }
+                                                    }
+                                                </div>
+                                            }
+                                        }
                                     }
                                 </div>
                             }
@@ -1580,12 +1662,144 @@ else
         StateHasChanged();
     }
 
+    // ── Advanced settings form (deck Control tab; descriptor-driven, optimistic + refetch-to-reconcile) ──
+    private bool _settingsOpen;
+    private int _settingsPid;                                             // pid the loaded values belong to
+    private Dictionary<string, System.Text.Json.JsonElement>? _settingsValues;
+    private bool _settingsLoading;
+    private string? _settingsError;
+    private string _settingsSearch = "";
+    private readonly HashSet<string> _settingsGroupsOpen = new();
+    private readonly Dictionary<string, object> _setPending = new();      // optimistic value per setting key
+    private readonly Dictionary<string, DateTime> _setPendingAt = new();
+    private readonly Dictionary<string, int> _setSeq = new();             // per-key debounce token
+
+    private async Task ToggleSettings(int pid)
+    {
+        _settingsOpen = !_settingsOpen;
+        if (_settingsOpen && (_settingsValues == null || _settingsPid != pid)) await LoadSettings(pid, silent: false);
+        StateHasChanged();
+    }
+
+    private async Task LoadSettings(int pid, bool silent)
+    {
+        if (string.IsNullOrWhiteSpace(_url)) { _settingsError = "Set your StatusAgent URL first."; if (!silent) StateHasChanged(); return; }
+        _settingsPid = pid;
+        if (!silent) { _settingsLoading = true; _settingsError = null; StateHasChanged(); }
+        var r = await Status.GetSettingsAsync(_url, _token, pid, _cts?.Token ?? CancellationToken.None);
+        if (!silent) _settingsLoading = false;
+        if (r.Ok) { _settingsValues = r.Values ?? new(); _settingsError = null; ReconcileSetPending(); }
+        else if (!silent) _settingsError = r.Error;
+        if (!_disposed) StateHasChanged();
+    }
+
+    // Drop optimistic pendings the server now confirms (value matches) or that have timed out (~8s).
+    private void ReconcileSetPending()
+    {
+        if (_setPending.Count == 0) return;
+        var done = new List<string>();
+        foreach (var kv in _setPending)
+        {
+            bool timedOut = !_setPendingAt.TryGetValue(kv.Key, out var t) || (DateTime.UtcNow - t).TotalSeconds > 8;
+            if (timedOut) { done.Add(kv.Key); continue; }
+            if (_settingsValues != null && _settingsValues.TryGetValue(kv.Key, out var el) && SettingEquals(el, kv.Value)) done.Add(kv.Key);
+        }
+        foreach (var k in done) { _setPending.Remove(k); _setPendingAt.Remove(k); }
+    }
+
+    private static bool SettingEquals(System.Text.Json.JsonElement el, object pending)
+    {
+        try
+        {
+            return pending switch
+            {
+                bool b => (el.ValueKind == System.Text.Json.JsonValueKind.True && b) || (el.ValueKind == System.Text.Json.JsonValueKind.False && !b),
+                _ when el.ValueKind == System.Text.Json.JsonValueKind.Number => Math.Abs(el.GetDouble() - Convert.ToDouble(pending)) < 0.001,
+                _ => false,
+            };
+        }
+        catch { return false; }
+    }
+
+    private double CurNum(AcSettingDescriptor d)
+    {
+        if (_setPending.TryGetValue(d.Key, out var p)) { try { return Convert.ToDouble(p); } catch { } }
+        if (_settingsValues != null && _settingsValues.TryGetValue(d.Key, out var el) && el.ValueKind == System.Text.Json.JsonValueKind.Number) return el.GetDouble();
+        return d.Min;
+    }
+    private bool CurBool(AcSettingDescriptor d)
+    {
+        if (_setPending.TryGetValue(d.Key, out var p) && p is bool pb) return pb;
+        if (_settingsValues != null && _settingsValues.TryGetValue(d.Key, out var el)) return el.ValueKind == System.Text.Json.JsonValueKind.True;
+        return false;
+    }
+    private int CurEnum(AcSettingDescriptor d) => (int)Math.Round(CurNum(d));
+    private string CurText(AcSettingDescriptor d)
+    {
+        if (_settingsValues != null && _settingsValues.TryGetValue(d.Key, out var el))
+            return el.ValueKind == System.Text.Json.JsonValueKind.String ? (el.GetString() ?? "") : el.ToString();
+        return "—";
+    }
+    private string FmtNum(AcSettingDescriptor d)
+        => d.Type == AcSettingType.Float ? CurNum(d).ToString("0.##", CI) : ((int)Math.Round(CurNum(d))).ToString(CI);
+    private bool IsSetPending(string key) => _setPending.ContainsKey(key);
+    private bool SettingsMatch(AcSettingDescriptor d)
+        => string.IsNullOrWhiteSpace(_settingsSearch)
+           || d.Label.Contains(_settingsSearch, StringComparison.OrdinalIgnoreCase)
+           || d.Key.Contains(_settingsSearch, StringComparison.OrdinalIgnoreCase);
+
+    private void ToggleSettingsGroup(string g) { if (!_settingsGroupsOpen.Add(g)) _settingsGroupsOpen.Remove(g); StateHasChanged(); }
+
+    private void ToggleSetting(AcSettingDescriptor d)
+    {
+        bool nv = !CurBool(d);
+        if (d.Key == AcSettingsSchema.BuffingKey && !nv)   // never turn buffing OFF from the phone (keeps you alive)
+        {
+            _cmdMsg[_settingsPid] = "Turn buffing OFF in-game — blocked from the phone for safety.";
+            StateHasChanged(); _ = ClearMsgLater(_settingsPid);
+            return;
+        }
+        _ = QueueSetSetting(_settingsPid, d, nv);
+    }
+    private void StepSetting(AcSettingDescriptor d, int dir)
+    {
+        double nv = Math.Clamp(CurNum(d) + dir * d.Step, d.Min, d.Max);
+        object boxed = d.Type == AcSettingType.Float ? nv : (object)(int)Math.Round(nv);
+        _ = QueueSetSetting(_settingsPid, d, boxed);
+    }
+    private void SetEnum(AcSettingDescriptor d, int idx) { _ = QueueSetSetting(_settingsPid, d, idx); }
+
+    // Optimistic: flip the displayed value now; debounce stepper spam; send; refetch ~0.9s later to reconcile.
+    private async Task QueueSetSetting(int pid, AcSettingDescriptor d, object value)
+    {
+        _setPending[d.Key] = value; _setPendingAt[d.Key] = DateTime.UtcNow;
+        int seq = (_setSeq.TryGetValue(d.Key, out var s) ? s : 0) + 1; _setSeq[d.Key] = seq;
+        StateHasChanged();
+        int debounce = d.Type is AcSettingType.Int or AcSettingType.Float ? 450 : 0;
+        if (debounce > 0) { try { await Task.Delay(debounce, _cts?.Token ?? CancellationToken.None); } catch { return; } }
+        if (!_setSeq.TryGetValue(d.Key, out var cur) || cur != seq) return;   // superseded by a newer change
+        object send = _setPending.TryGetValue(d.Key, out var lv) ? lv : value;
+        await Status.SetSettingAsync(_url, _token, pid, d.Key, send, _cts?.Token ?? CancellationToken.None);
+        _setPendingAt[d.Key] = DateTime.UtcNow;
+        _ = RefetchSettingsSoon(pid);
+    }
+    private async Task RefetchSettingsSoon(int pid)
+    {
+        try { await Task.Delay(900, _cts?.Token ?? CancellationToken.None); } catch { return; }
+        if (!_disposed && _settingsOpen && _deckPid == pid) await LoadSettings(pid, silent: true);
+    }
+    private void ResetSettingsForm()   // on deck open/close/page — don't carry one client's form state to the next
+    {
+        _settingsOpen = false; _settingsValues = null; _settingsError = null; _settingsSearch = "";
+        _setPending.Clear(); _setPendingAt.Clear(); _settingsGroupsOpen.Clear();
+    }
+
     // ── Fleet overview (collapsible glance-rows + roll-up state filter) ──
     private string _fleetFilter = "";                  // "" = all; otherwise a state string
     private int _deckPid;                               // open drill-in deck client (0 = fleet overview)
 
-    private void OpenDeck(int pid) { _deckPid = pid; _deckTab = "Status"; StateHasChanged(); }
-    private void CloseDeck() { ReleaseDeckHeld(); _deckPid = 0; StateHasChanged(); }
+    private void OpenDeck(int pid) { _deckPid = pid; _deckTab = "Status"; ResetSettingsForm(); StateHasChanged(); }
+    private void CloseDeck() { ReleaseDeckHeld(); _deckPid = 0; ResetSettingsForm(); StateHasChanged(); }
 
     // Sub-tabs (deck-scoped; one deck open at a time). Reset to Status on every open/page so paging
     // never lands on a stale "Live" tab and silently re-mounts the HD overlay on an arbitrary client.
@@ -1633,6 +1847,7 @@ else
         int n = i < 0 ? 0 : ((i + dir) % list.Count + list.Count) % list.Count;   // wrap around
         _deckPid = list[n].Pid;
         _deckTab = "Status";
+        ResetSettingsForm();
         StateHasChanged();
     }
 

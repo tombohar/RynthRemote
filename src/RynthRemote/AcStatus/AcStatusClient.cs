@@ -40,6 +40,13 @@ public sealed record AcMapsResult(bool Ok, AcMapsPayload? Payload, string? Error
     public static AcMapsResult Fail(string error) => new(false, null, error);
 }
 
+/// Result of a /settings (one client's advanced-settings bridge) fetch — a flat key→value map.
+public sealed record AcSettingsResult(bool Ok, Dictionary<string, System.Text.Json.JsonElement>? Values, string? Error)
+{
+    public static AcSettingsResult Success(Dictionary<string, System.Text.Json.JsonElement> v) => new(true, v, null);
+    public static AcSettingsResult Fail(string error) => new(false, null, error);
+}
+
 public interface IAcStatusClient
 {
     /// Fetches the StatusAgent feed from the configured URL. Never throws for
@@ -64,6 +71,13 @@ public interface IAcStatusClient
     /// Fetches the list of baked dungeon floor-plan maps (GET /maps). Never throws for
     /// network/parse problems — returns a Fail result instead.
     Task<AcMapsResult> GetMapsAsync(string? baseUrl, string? token, CancellationToken ct = default);
+
+    /// Fetches one client's advanced-settings bridge (GET /settings?pid=N) as a flat key→value map.
+    Task<AcSettingsResult> GetSettingsAsync(string? baseUrl, string? token, int pid, CancellationToken ct = default);
+
+    /// Writes ONE advanced setting (POST /command action=setSetting, value={"key":..,"value":..}).
+    /// The producer clamps/validates; never throws for network problems — returns a Fail result instead.
+    Task<AcCommandResult> SetSettingAsync(string? baseUrl, string? token, int pid, string key, object value, CancellationToken ct = default);
 
     /// POSTs a control command (toggle/profile/utility) to the agent for one client.
     /// Never throws for network problems — returns a Fail result instead.
@@ -276,6 +290,56 @@ public sealed class AcStatusClient : IAcStatusClient
         catch (JsonException) { return AcMapsResult.Fail("The agent sent data this app couldn't read."); }
     }
 
+    public async Task<AcSettingsResult> GetSettingsAsync(string? baseUrl, string? token, int pid, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl)) return AcSettingsResult.Fail("No status URL configured.");
+        Uri uri;
+        try { uri = BuildSettingsUri(baseUrl, pid); }
+        catch { return AcSettingsResult.Fail("Status URL isn't a valid address."); }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        linked.CancelAfter(RequestTimeout);
+        var lct = linked.Token;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, uri);
+            if (!string.IsNullOrWhiteSpace(token))
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
+
+            using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, lct).ConfigureAwait(false);
+            if (!res.IsSuccessStatusCode)
+                return AcSettingsResult.Fail($"Agent returned {(int)res.StatusCode} {res.ReasonPhrase}.");
+
+            await using var stream = await res.Content.ReadAsStreamAsync(lct).ConfigureAwait(false);
+            var dict = await JsonSerializer.DeserializeAsync<Dictionary<string, JsonElement>>(stream, JsonOpts, lct).ConfigureAwait(false);
+            return dict is null
+                ? AcSettingsResult.Fail("Agent returned an empty response.")
+                : AcSettingsResult.Success(dict);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) { return AcSettingsResult.Fail("Timed out reaching the agent."); }
+        catch (HttpRequestException ex) { return AcSettingsResult.Fail("Can't reach the agent — " + ex.Message); }
+        catch (JsonException) { return AcSettingsResult.Fail("The agent sent data this app couldn't read."); }
+    }
+
+    public Task<AcCommandResult> SetSettingAsync(string? baseUrl, string? token, int pid, string key, object value, CancellationToken ct = default)
+    {
+        // Format the value by CLR type so an int field gets an integer token and a float gets a decimal
+        // (the producer infers int-vs-float from the token kind). InvariantCulture so a comma-decimal locale
+        // can't corrupt the JSON. The producer clamps/validates + rejects unknown/read-only keys.
+        string vJson = value switch
+        {
+            bool b => b ? "true" : "false",
+            int i => i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            long l => l.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            double d => d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            float f => f.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            _ => JsonSerializer.Serialize(value?.ToString() ?? string.Empty),
+        };
+        string payload = "{\"key\":" + JsonSerializer.Serialize(key) + ",\"value\":" + vJson + "}";
+        return PostCommandAsync(baseUrl, token, pid, "setSetting", payload, ct);
+    }
+
     public async Task<AcInventoryResult> GetInventoryAsync(string? baseUrl, string? token, int pid, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
@@ -454,6 +518,18 @@ public sealed class AcStatusClient : IAcStatusClient
             Query = "lb=" + lb.ToString("X") + "&layer=" + layer + (string.IsNullOrWhiteSpace(token) ? "" : "&token=" + Uri.EscapeDataString(token.Trim())),
         };
         return ub.Uri.ToString();
+    }
+
+    /// Same normalisation as BuildStatusUri but targets /settings?pid=N (one client's advanced settings).
+    public static Uri BuildSettingsUri(string baseUrl, int pid)
+    {
+        var status = BuildStatusUri(baseUrl);
+        var ub = new UriBuilder(status)
+        {
+            Path = status.AbsolutePath.Replace("/status.json", "/settings", StringComparison.OrdinalIgnoreCase).Replace("/status", "/settings", StringComparison.OrdinalIgnoreCase),
+            Query = "pid=" + pid,
+        };
+        return ub.Uri;
     }
 
     /// Same normalisation as BuildStatusUri but targets /inventory?pid=N (one client's full inventory).

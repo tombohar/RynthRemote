@@ -66,7 +66,10 @@ body {
     font-size: 1rem;
     -webkit-text-size-adjust: 100%;
 }
-.status-bar-safe-area { height: env(safe-area-inset-top, 0); background: var(--bg); }
+/* Status-bar clearance. MAUI's iOS BlazorWebView is edge-to-edge but doesn't propagate the safe-area
+   inset to CSS env() (returns 0), so the title would slide under the time/battery. max() floors the
+   spacer at a notch-safe height while still honoring env() on any platform that does report it. */
+.status-bar-safe-area { height: max(env(safe-area-inset-top, 0px), 47px); background: var(--bg); }
 .rr-main { padding: .8rem .8rem calc(1rem + env(safe-area-inset-bottom, 0)); max-width: 900px; margin: 0 auto; }
 
 h1 { font-size: 1.4rem; margin: .2rem 0 .6rem; }

@@ -241,6 +241,7 @@
     .ac-map-vp { position:relative; overflow:hidden; height:62vh; touch-action:none; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-md); }
     .ac-map-wrap { position:relative; width:100%; will-change:transform; }
     .ac-map-img { display:block; width:100%; height:auto; image-rendering:pixelated; -webkit-user-drag:none; user-select:none; }
+    .ac-map-ovl { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 </style>
 
 <div class="card-head">
@@ -505,6 +506,7 @@ else if (_view == "maps")
         var dungeons = _maps.Maps.Select(m => m.LandblockId).Distinct().OrderBy(x => x).ToList();
         var floors = _maps.Maps.Where(m => m.LandblockId == _selDungeon).OrderBy(m => m.Layer).ToList();
         var cur = floors.FirstOrDefault(m => m.Layer == _selLayer) ?? floors.FirstOrDefault();
+        var indoorClients = _result?.Payload?.Clients?.Where(cc => cc.Indoor && cc.LandblockId != 0).ToList() ?? new();
         <div class="ac-roll">
             @foreach (var lb in dungeons)
             {
@@ -523,8 +525,21 @@ else if (_view == "maps")
                 }
             </div>
         }
+        @if (indoorClients.Count > 0)
+        {
+            <div class="ac-ctabs">
+                <span class="ac-sub" style="align-self:center;margin-right:.2rem">live dot:</span>
+                @foreach (var ic in indoorClients)
+                {
+                    int icp = ic.Pid;
+                    <button class="ac-pill ac-ctab @(_mapClientPid == icp ? "on" : "")" @onclick="@(() => SelectMapClient(icp))">@ic.DisplayName</button>
+                }
+            </div>
+        }
         @if (cur is { } m)
         {
+            var mc = MapClient();
+            var dot = mc != null ? MapDot(mc, m) : null;
             <div class="ac-map-bar">
                 <button class="ac-pill" @onclick="@(() => MapZoom(1.25))" aria-label="zoom in">＋</button>
                 <button class="ac-pill" @onclick="@(() => MapZoom(0.8))" aria-label="zoom out">－</button>
@@ -536,6 +551,12 @@ else if (_view == "maps")
                  @onpointerup="MapPointerUp" @onpointercancel="MapPointerUp" @onpointerleave="MapPointerUp">
                 <div class="ac-map-wrap" style="transform:translate(@(_panX.ToString(CI))px,@(_panY.ToString(CI))px) scale(@_zoom.ToString(CI));transform-origin:0 0">
                     <img class="ac-map-img" src="@AcStatusClient.BuildMapUrl(_url, m.LandblockId, m.Layer, _token)" alt="dungeon floor plan" />
+                    @if (dot is { } pt)
+                    {
+                        <svg class="ac-map-ovl" viewBox="0 0 @m.W @m.H" preserveAspectRatio="none">
+                            <circle cx="@pt.X.ToString(CI)" cy="@pt.Y.ToString(CI)" r="3" fill="#33ff66" stroke="#0b1220" stroke-width="1"></circle>
+                        </svg>
+                    }
                 </div>
             </div>
             <div class="ac-sub" style="margin-top:.35rem">Floor outline + walls + slopes, baked from the DAT. Drag to pan · ＋/－ to zoom.</div>
@@ -1030,11 +1051,21 @@ else
         {
             _maps = r.Payload ?? new();
             _mapsError = null;
-            // Default selection: first dungeon, its lowest floor (unless a valid selection is already held).
-            if (_maps.Maps.Count > 0 && (_selDungeon == 0 || !_maps.Maps.Any(m => m.LandblockId == _selDungeon)))
+            // Follow a bot that's currently in a baked dungeon (so the live dot shows on open); else default
+            // to the first dungeon's lowest floor (unless a still-valid selection is already held).
+            // Only auto-select when there's no still-valid pick — so tapping Refresh never yanks the view
+            // off a dungeon/floor you chose manually. First open follows a bot in a baked dungeon (dot shows
+            // immediately); otherwise defaults to the first dungeon's lowest floor.
+            bool haveValidSel = _selDungeon != 0 && _maps.Maps.Any(m => m.LandblockId == _selDungeon);
+            if (!haveValidSel && _maps.Maps.Count > 0)
             {
-                _selDungeon = _maps.Maps[0].LandblockId;
-                _selLayer = _maps.Maps.Where(m => m.LandblockId == _selDungeon).Min(m => m.Layer);
+                var follow = _result?.Payload?.Clients?.FirstOrDefault(c => c.Indoor && c.LandblockId != 0 && _maps.Maps.Any(m => m.LandblockId == c.LandblockId));
+                if (follow != null) SelectMapClient(follow.Pid);
+                else
+                {
+                    _selDungeon = _maps.Maps[0].LandblockId;
+                    _selLayer = _maps.Maps.Where(m => m.LandblockId == _selDungeon).Min(m => m.Layer);
+                }
             }
         }
         else _mapsError = r.Error;
@@ -1068,6 +1099,51 @@ else
     }
     private void MapPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e) => _mapPanning = false;
     private void MapZoom(double factor) { _zoom = Math.Clamp(_zoom * factor, 0.25, 8); StateHasChanged(); }
+
+    // ── Live bot-position dot (Stage 2) ──
+    private int _mapClientPid;   // which client's dot to plot (0 = auto = first indoor client)
+
+    // World→pixel for the live dot. Wx/Wy are ABSOLUTE world coords (engine already added the landblock
+    // offset); 0.5 world-units/pixel; row 0 = north so Y is flipped. Null when the client isn't indoors,
+    // isn't in THIS map's dungeon, or is off this floor's footprint.
+    private static (double X, double Y)? MapDot(AcClientStatus c, AcMapEntry m)
+    {
+        if (!c.Indoor || c.LandblockId == 0 || c.LandblockId != m.LandblockId) return null;
+        double pixelX = c.Wx / 0.5 - m.XMin;
+        double pixelY = (m.H - 1) - (c.Wy / 0.5 - m.YMin);
+        if (pixelX < 0 || pixelX >= m.W || pixelY < 0 || pixelY >= m.H) return null;
+        return (pixelX, pixelY);
+    }
+
+    // The client whose dot we plot: the explicit pick if still present, else the first indoor client.
+    private AcClientStatus? MapClient()
+    {
+        var clients = _result?.Payload?.Clients;
+        if (clients is null) return null;
+        if (_mapClientPid != 0)
+        {
+            var sel = clients.FirstOrDefault(c => c.Pid == _mapClientPid);
+            if (sel != null) return sel;
+        }
+        return clients.FirstOrDefault(c => c.Indoor && c.LandblockId != 0);
+    }
+
+    // Picking a client jumps the map to its dungeon + the floor whose footprint actually contains the dot
+    // (lowest layer on a tie; the engine can't resolve the exact layer index, so we pick by in-bounds pixel).
+    private void SelectMapClient(int pid)
+    {
+        _mapClientPid = pid;
+        var c = _result?.Payload?.Clients?.FirstOrDefault(x => x.Pid == pid);
+        if (c is { Indoor: true } && c.LandblockId != 0 && _maps != null && _maps.Maps.Any(m => m.LandblockId == c.LandblockId))
+        {
+            _selDungeon = c.LandblockId;
+            var floors = _maps.Maps.Where(m => m.LandblockId == c.LandblockId).OrderBy(m => m.Layer).ToList();
+            var hit = floors.FirstOrDefault(m => MapDot(c, m) != null);
+            _selLayer = hit?.Layer ?? floors.Select(m => m.Layer).DefaultIfEmpty(0).Min();
+            _panX = _panY = 0; _zoom = 1;
+        }
+        StateHasChanged();
+    }
 
     private void ToggleRun(string key) { if (!_expandedRuns.Add(key)) _expandedRuns.Remove(key); }
 

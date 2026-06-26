@@ -78,6 +78,14 @@ public sealed class AcClientStatus
     public long XpSession { get; set; }
     public double BurdenPct { get; set; }
     public string? Area { get; set; }
+    // Live map-dot position (status-export). Indoor only; Wx/Wy are ABSOLUTE world coords matching the
+    // baked dungeon map's frame; Pz is raw local Z (floor hint). Landblock matches the .bin / AcMapEntry.
+    public string? Landblock { get; set; }
+    public bool Indoor { get; set; }
+    public double Wx { get; set; }
+    public double Wy { get; set; }
+    public double Pz { get; set; }
+    public uint LandblockId => uint.TryParse(Landblock, System.Globalization.NumberStyles.HexNumber, null, out var v) ? v : 0;
     public int SessionKills { get; set; }
     /// Seconds since the last kill; -1 = no kill yet this session.
     public int SecsSinceLastKill { get; set; } = -1;

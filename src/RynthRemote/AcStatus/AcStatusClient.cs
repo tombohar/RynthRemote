@@ -33,6 +33,13 @@ public sealed record AcInventoryResult(bool Ok, AcInventoryPayload? Payload, str
     public static AcInventoryResult Fail(string error) => new(false, null, error);
 }
 
+/// Result of a /maps (baked dungeon floor-plan list) fetch.
+public sealed record AcMapsResult(bool Ok, AcMapsPayload? Payload, string? Error)
+{
+    public static AcMapsResult Success(AcMapsPayload p) => new(true, p, null);
+    public static AcMapsResult Fail(string error) => new(false, null, error);
+}
+
 public interface IAcStatusClient
 {
     /// Fetches the StatusAgent feed from the configured URL. Never throws for
@@ -53,6 +60,10 @@ public interface IAcStatusClient
     /// Fetches one client's full read-only inventory (GET /inventory?pid=N). Never throws for
     /// network/parse problems — returns a Fail result instead.
     Task<AcInventoryResult> GetInventoryAsync(string? baseUrl, string? token, int pid, CancellationToken ct = default);
+
+    /// Fetches the list of baked dungeon floor-plan maps (GET /maps). Never throws for
+    /// network/parse problems — returns a Fail result instead.
+    Task<AcMapsResult> GetMapsAsync(string? baseUrl, string? token, CancellationToken ct = default);
 
     /// POSTs a control command (toggle/profile/utility) to the agent for one client.
     /// Never throws for network problems — returns a Fail result instead.
@@ -231,6 +242,40 @@ public sealed class AcStatusClient : IAcStatusClient
         catch (JsonException) { return AcRunsResult.Fail("The agent sent data this app couldn't read."); }
     }
 
+    public async Task<AcMapsResult> GetMapsAsync(string? baseUrl, string? token, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return AcMapsResult.Fail("No status URL configured.");
+
+        Uri uri;
+        try { uri = BuildMapsUri(baseUrl); }
+        catch { return AcMapsResult.Fail("Status URL isn't a valid address."); }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        linked.CancelAfter(RequestTimeout);
+        var lct = linked.Token;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, uri);
+            if (!string.IsNullOrWhiteSpace(token))
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
+
+            using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, lct).ConfigureAwait(false);
+            if (!res.IsSuccessStatusCode)
+                return AcMapsResult.Fail($"Agent returned {(int)res.StatusCode} {res.ReasonPhrase}.");
+
+            await using var stream = await res.Content.ReadAsStreamAsync(lct).ConfigureAwait(false);
+            var payload = await JsonSerializer.DeserializeAsync<AcMapsPayload>(stream, JsonOpts, lct).ConfigureAwait(false);
+            return payload is null
+                ? AcMapsResult.Fail("Agent returned an empty response.")
+                : AcMapsResult.Success(payload);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) { return AcMapsResult.Fail("Timed out reaching the agent."); }
+        catch (HttpRequestException ex) { return AcMapsResult.Fail("Can't reach the agent — " + ex.Message); }
+        catch (JsonException) { return AcMapsResult.Fail("The agent sent data this app couldn't read."); }
+    }
+
     public async Task<AcInventoryResult> GetInventoryAsync(string? baseUrl, string? token, int pid, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
@@ -385,6 +430,30 @@ public sealed class AcStatusClient : IAcStatusClient
         var status = BuildStatusUri(baseUrl);
         var ub = new UriBuilder(status) { Path = status.AbsolutePath.Replace("/status.json", "/runs", StringComparison.OrdinalIgnoreCase).Replace("/status", "/runs", StringComparison.OrdinalIgnoreCase), Query = "" };
         return ub.Uri;
+    }
+
+    /// Same normalisation as BuildStatusUri but targets /maps (the baked dungeon floor-plan list).
+    public static Uri BuildMapsUri(string baseUrl)
+    {
+        var status = BuildStatusUri(baseUrl);
+        var ub = new UriBuilder(status) { Path = status.AbsolutePath.Replace("/status.json", "/maps", StringComparison.OrdinalIgnoreCase).Replace("/status", "/maps", StringComparison.OrdinalIgnoreCase), Query = "" };
+        return ub.Uri;
+    }
+
+    /// Dungeon-map image URL for an &lt;img&gt;: ".../map?lb=HEX&layer=N[&token=]". The agent re-encodes the
+    /// baked .bin raster to PNG. Token rides as a query param (img tags can't set headers) — same pattern as
+    /// /icon and the MJPEG stream.
+    public static string BuildMapUrl(string baseUrl, uint lb, int layer, string? token)
+    {
+        var status = BuildStatusUri(baseUrl);
+        var ub = new UriBuilder(status)
+        {
+            Path = status.AbsolutePath
+                .Replace("/status.json", "/map", StringComparison.OrdinalIgnoreCase)
+                .Replace("/status", "/map", StringComparison.OrdinalIgnoreCase),
+            Query = "lb=" + lb.ToString("X") + "&layer=" + layer + (string.IsNullOrWhiteSpace(token) ? "" : "&token=" + Uri.EscapeDataString(token.Trim())),
+        };
+        return ub.Uri.ToString();
     }
 
     /// Same normalisation as BuildStatusUri but targets /inventory?pid=N (one client's full inventory).

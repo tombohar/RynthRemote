@@ -267,3 +267,33 @@ public sealed class AcRun
     /// Stable key for expand/collapse + @key (falls back to pid+start if RunId is missing).
     public string Key => !string.IsNullOrWhiteSpace(RunId) ? RunId! : $"{Pid}-{StartUtc?.ToUnixTimeSeconds()}";
 }
+
+/// Consumer-side mirror of the StatusAgent's GET &lt;url&gt;/maps payload (schema "rynthcore.maps/1") —
+/// the list of baked dungeon floor-plan maps the agent can serve as PNGs. Deserialized case-insensitively.
+public sealed class AcMapsPayload
+{
+    public string? Schema { get; set; }
+    public int Count { get; set; }
+    public List<AcMapEntry> Maps { get; set; } = new();
+}
+
+/// One baked dungeon floor-plan: landblock + Z-layer + the raster's ABSOLUTE-world-frame bounds (grid-cell
+/// units; 0.5 world-units/pixel; row 0 = north). The world→pixel transform for an overlay dot is
+/// pixelX = wx/0.5 - XMin, pixelY = (H-1) - (wy/0.5 - YMin).
+public sealed class AcMapEntry
+{
+    public string? Landblock { get; set; }   // "0000002B"
+    public int Layer { get; set; }
+    public long Bytes { get; set; }
+    public DateTimeOffset? Mtime { get; set; }
+    public int W { get; set; }
+    public int H { get; set; }
+    public int XMin { get; set; }
+    public int YMin { get; set; }
+    public string? Name { get; set; }
+
+    /// Parsed landblock id (hex) for matching a client's current landblock; 0 if unparseable.
+    public uint LandblockId => uint.TryParse(Landblock, System.Globalization.NumberStyles.HexNumber, null, out var v) ? v : 0;
+    /// Short floor label, 1-based, mirroring the in-game "F1..Fn".
+    public string FloorLabel => "F" + (Layer + 1);
+}

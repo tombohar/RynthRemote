@@ -236,6 +236,11 @@
     .ac-lb-val { font-weight:700; font-variant-numeric:tabular-nums; color:var(--accent); white-space:nowrap; min-width:3rem; text-align:right; }
     .ac-lb-row.stale { opacity:.7; }
     .ac-lb-row.stale .ac-lb-val { color:var(--amber); }
+    /* Dungeon-map viewer */
+    .ac-map-bar { display:flex; gap:.3rem; align-items:center; margin:.35rem 0; }
+    .ac-map-vp { position:relative; overflow:hidden; height:62vh; touch-action:none; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-md); }
+    .ac-map-wrap { position:relative; width:100%; will-change:transform; }
+    .ac-map-img { display:block; width:100%; height:auto; image-rendering:pixelated; -webkit-user-drag:none; user-select:none; }
 </style>
 
 <div class="card-head">
@@ -250,6 +255,7 @@
 <div class="ac-tabs">
     <button class="ac-tab @(_view == "clients" ? "on" : "")" @onclick="@(() => SwitchView("clients"))">Clients</button>
     <button class="ac-tab @(_view == "council" ? "on" : "")" @onclick="@(() => SwitchView("council"))">Council</button>
+    <button class="ac-tab @(_view == "maps" ? "on" : "")" @onclick="@(() => SwitchView("maps"))">Maps</button>
     <button class="ac-tab @(_view == "archive" ? "on" : "")" @onclick="@(() => SwitchView("archive"))">Archive</button>
 </div>
 
@@ -469,6 +475,71 @@ else if (_view == "archive")
                 </div>
             }
         </div>
+    }
+}
+else if (_view == "maps")
+{
+    bool noUrl = string.IsNullOrWhiteSpace(_url);
+    <div class="card-head" style="margin-bottom:.4rem">
+        <span class="ac-sub">@(_maps is { Maps.Count: > 0 } ? $"{_maps.Maps.Select(m => m.LandblockId).Distinct().Count()} dungeon(s)" : "Dungeon maps")</span>
+        <button class="btn-r ghost sm" @onclick="LoadMapsAsync" disabled="@(noUrl || _mapsLoading)">@(_mapsLoading ? "…" : "Refresh")</button>
+    </div>
+    @if (noUrl)
+    {
+        <div class="card-r"><p class="muted" style="margin-top:0">Set your StatusAgent URL (Connection) to view dungeon maps.</p></div>
+    }
+    else if (_mapsLoading && _maps is null)
+    {
+        <p class="loading">Loading maps…</p>
+    }
+    else if (_mapsError is not null)
+    {
+        <div class="card-r"><p class="ac-warn" style="margin-top:0">&#9888; @_mapsError</p></div>
+    }
+    else if (_maps is null || _maps.Maps.Count == 0)
+    {
+        <div class="card-r"><p class="muted" style="margin-top:0">No dungeon maps baked yet. Walk a bot into a dungeon in-game to bake its floor plan, then tap Refresh.</p></div>
+    }
+    else
+    {
+        var dungeons = _maps.Maps.Select(m => m.LandblockId).Distinct().OrderBy(x => x).ToList();
+        var floors = _maps.Maps.Where(m => m.LandblockId == _selDungeon).OrderBy(m => m.Layer).ToList();
+        var cur = floors.FirstOrDefault(m => m.Layer == _selLayer) ?? floors.FirstOrDefault();
+        <div class="ac-roll">
+            @foreach (var lb in dungeons)
+            {
+                uint d = lb;
+                string nm = _maps.Maps.First(m => m.LandblockId == d).Name ?? "";
+                <button class="ac-chip @(_selDungeon == d ? "on" : "")" @onclick="@(() => SelectDungeon(d))">@(string.IsNullOrWhiteSpace(nm) ? $"Dungeon {d & 0xFFFF:X4}" : nm)</button>
+            }
+        </div>
+        @if (floors.Count > 1)
+        {
+            <div class="ac-ctabs">
+                @foreach (var f in floors)
+                {
+                    int ly = f.Layer;
+                    <button class="ac-pill ac-ctab @(_selLayer == ly ? "on" : "")" @onclick="@(() => SelectLayer(ly))">@f.FloorLabel</button>
+                }
+            </div>
+        }
+        @if (cur is { } m)
+        {
+            <div class="ac-map-bar">
+                <button class="ac-pill" @onclick="@(() => MapZoom(1.25))" aria-label="zoom in">＋</button>
+                <button class="ac-pill" @onclick="@(() => MapZoom(0.8))" aria-label="zoom out">－</button>
+                <button class="ac-pill" @onclick="MapReset">Reset</button>
+                <span class="lbl" style="margin-left:auto">@(m.W)×@(m.H)</span>
+            </div>
+            <div class="ac-map-vp"
+                 @onpointerdown="MapPointerDown" @onpointermove="MapPointerMove"
+                 @onpointerup="MapPointerUp" @onpointercancel="MapPointerUp" @onpointerleave="MapPointerUp">
+                <div class="ac-map-wrap" style="transform:translate(@(_panX.ToString(CI))px,@(_panY.ToString(CI))px) scale(@_zoom.ToString(CI));transform-origin:0 0">
+                    <img class="ac-map-img" src="@AcStatusClient.BuildMapUrl(_url, m.LandblockId, m.Layer, _token)" alt="dungeon floor plan" />
+                </div>
+            </div>
+            <div class="ac-sub" style="margin-top:.35rem">Floor outline + walls + slopes, baked from the DAT. Drag to pan · ＋/－ to zoom.</div>
+        }
     }
 }
 else if (string.IsNullOrWhiteSpace(_url))
@@ -924,20 +995,79 @@ else
     private bool _savedConfig;
 
     // ── Archive (run history) view ───────────────────────────────────────────
-    private string _view = "clients";                       // "clients" | "archive"
+    private string _view = "clients";                       // "clients" | "council" | "maps" | "archive"
     private List<AcRun>? _runs;                             // null = not loaded yet
     private string? _runsError;
     private bool _runsLoading;
     private readonly HashSet<string> _expandedRuns = new(); // run keys whose detail is expanded
 
+    // ── Dungeon-map viewer ──
+    private AcMapsPayload? _maps;                           // null = not loaded yet
+    private string? _mapsError;
+    private bool _mapsLoading;
+    private uint _selDungeon;                               // selected landblock id
+    private int _selLayer;                                  // selected Z-layer
+    private double _panX, _panY, _zoom = 1;                 // pan/zoom of the map image
+    private static readonly System.Globalization.CultureInfo CI = System.Globalization.CultureInfo.InvariantCulture;
+
     private async Task SwitchView(string v)
     {
         if (_view == v) return;
         _view = v;
-        // Lazy-load the archive the first time it's opened (or after a failure / config change cleared it).
+        // Lazy-load the archive / maps the first time each is opened (or after a failure / config change cleared it).
         if (v == "archive" && _runs is null && !_runsLoading) await LoadRunsAsync();
+        else if (v == "maps" && _maps is null && !_mapsLoading) await LoadMapsAsync();
         else StateHasChanged();
     }
+
+    private async Task LoadMapsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_url)) { _mapsError = "Set your StatusAgent URL first."; StateHasChanged(); return; }
+        _mapsLoading = true; _mapsError = null; StateHasChanged();
+        var r = await Status.GetMapsAsync(_url, _token, _cts?.Token ?? CancellationToken.None);
+        _mapsLoading = false;
+        if (r.Ok)
+        {
+            _maps = r.Payload ?? new();
+            _mapsError = null;
+            // Default selection: first dungeon, its lowest floor (unless a valid selection is already held).
+            if (_maps.Maps.Count > 0 && (_selDungeon == 0 || !_maps.Maps.Any(m => m.LandblockId == _selDungeon)))
+            {
+                _selDungeon = _maps.Maps[0].LandblockId;
+                _selLayer = _maps.Maps.Where(m => m.LandblockId == _selDungeon).Min(m => m.Layer);
+            }
+        }
+        else _mapsError = r.Error;
+        if (!_disposed) StateHasChanged();
+    }
+
+    private void SelectDungeon(uint lb)
+    {
+        if (_selDungeon == lb) return;
+        _selDungeon = lb;
+        _selLayer = _maps?.Maps.Where(m => m.LandblockId == lb).Select(m => m.Layer).DefaultIfEmpty(0).Min() ?? 0;
+        _panX = _panY = 0; _zoom = 1;
+        StateHasChanged();
+    }
+    private void SelectLayer(int layer) { _selLayer = layer; _panX = _panY = 0; _zoom = 1; StateHasChanged(); }
+    private void MapReset() { _panX = _panY = 0; _zoom = 1; StateHasChanged(); }
+
+    // Single-finger drag = pan. Tracked via pointer capture; pure CSS transform, no JS interop.
+    private bool _mapPanning;
+    private double _panStartX, _panStartY, _ptrStartX, _ptrStartY;
+    private void MapPointerDown(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        _mapPanning = true;
+        _ptrStartX = e.ClientX; _ptrStartY = e.ClientY; _panStartX = _panX; _panStartY = _panY;
+    }
+    private void MapPointerMove(Microsoft.AspNetCore.Components.Web.PointerEventArgs e)
+    {
+        if (!_mapPanning) return;
+        _panX = _panStartX + (e.ClientX - _ptrStartX);
+        _panY = _panStartY + (e.ClientY - _ptrStartY);
+    }
+    private void MapPointerUp(Microsoft.AspNetCore.Components.Web.PointerEventArgs e) => _mapPanning = false;
+    private void MapZoom(double factor) { _zoom = Math.Clamp(_zoom * factor, 0.25, 8); StateHasChanged(); }
 
     private void ToggleRun(string key) { if (!_expandedRuns.Add(key)) _expandedRuns.Remove(key); }
 
@@ -1725,9 +1855,11 @@ else
         _result = null;
         _alertsNeedRebase = true;       // new host → rebaseline alerts on the first snapshot, don't fire
         _runs = null; _runsError = null;           // drop cached run history; it reloads against the new host
+        _maps = null; _mapsError = null;           // drop cached map list; it reloads against the new host
         _lastFeedAtUtc = DateTime.MinValue;        // let the poll take over until the feed reconnects
         try { _feedConnCts?.Cancel(); } catch { }  // drop the old-host WS; the feed loop re-opens on the new URL
         if (_view == "archive") await LoadRunsAsync();
+        else if (_view == "maps") await LoadMapsAsync();
         await RefreshOnceAsync(_cts?.Token ?? CancellationToken.None);
     }
 

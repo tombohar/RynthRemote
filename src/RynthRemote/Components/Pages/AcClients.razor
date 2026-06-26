@@ -36,7 +36,17 @@
     .ac-deck-name { font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .ac-deck-pos { font-size:.72rem; color:var(--muted); font-variant-numeric:tabular-nums; }
     .ac-deck-nav { background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:var(--r-sm); min-width:42px; min-height:42px; cursor:pointer; font-size:1.1rem; }
-    .ac-deck-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:.7rem .8rem; }
+    .ac-deck-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0; }
+    .ac-pane { padding:.7rem .8rem; }
+    /* KPI strip + sub-tabs: non-scrolling siblings between the deck head and the scroll body. */
+    .ac-kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:.4rem; padding:.45rem .8rem; border-bottom:1px solid var(--border); background:var(--surface); }
+    .ac-kpi-c { text-align:center; min-width:0; }
+    .ac-kpi-v { font-weight:700; font-variant-numeric:tabular-nums; font-size:1.05rem; line-height:1.1; }
+    .ac-kpi-v.warn { color:var(--amber); }
+    .ac-kpi-l { font-size:.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+    .ac-subnav { display:flex; gap:.25rem; padding:.4rem .6rem; border-bottom:1px solid var(--border); background:var(--surface); }
+    .ac-subtab { flex:1 1 0; min-height:40px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); border-radius:var(--r-sm); font-size:.8rem; cursor:pointer; }
+    .ac-subtab.on { background:var(--accent); color:var(--accent-ink); border-color:transparent; font-weight:700; }
     .ac-deck-bar { display:flex; flex-wrap:wrap; gap:.3rem; align-items:stretch; padding:.4rem .6rem calc(.4rem + max(env(safe-area-inset-bottom,0px),10px)); border-top:1px solid var(--border); background:var(--surface); }
     .ac-deck-bar .ac-pill { font-size:.76rem; padding:.4rem .4rem; min-height:42px; flex:1 1 0; min-width:0; }
     .ac-deck-bar .ac-macro { flex:0 0 auto; padding:.4rem .7rem; }
@@ -46,6 +56,12 @@
     .ac-badge { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:.15rem .45rem; border-radius:999px; color:#0b1120; }
     .ac-bar { height:12px; border-radius:6px; background:var(--surface-2); overflow:hidden; margin:.15rem 0; }
     .ac-bar > span { display:block; height:100%; }
+    /* Gemstone vitals — faceted sheen rides on top of the inline base hue; per-gem glow via explicit class (no animation: deck re-renders each ~1s poll). */
+    .ac-bar.gem { height:16px; border-radius:9px; background:linear-gradient(180deg,#0a0d14,#141a26); border:1px solid rgba(255,255,255,.06); box-shadow:inset 0 1px 3px rgba(0,0,0,.6); }
+    .ac-bar.gem > span { border-radius:8px; background-image:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,.08) 22%,rgba(0,0,0,.25)); background-blend-mode:screen; }
+    .ac-bar.gem-ruby > span     { box-shadow:0 0 8px rgba(239,68,68,.6); }
+    .ac-bar.gem-jade > span     { box-shadow:0 0 8px rgba(34,197,94,.55); }
+    .ac-bar.gem-sapphire > span { box-shadow:0 0 8px rgba(59,130,246,.6); }
     .ac-vlabel { display:flex; justify-content:space-between; font-size:.7rem; color:var(--muted); }
     .ac-doing { margin:.5rem 0 .25rem; font-size:.85rem; }
     .ac-stream-bar { margin:.35rem 0 .25rem; }
@@ -70,6 +86,14 @@
     .ac-pill.on { background:#34d399; color:#06281c; border-color:transparent; font-weight:700; }
     .ac-pill.applying { box-shadow:0 0 0 2px var(--accent); animation:ac-applying 1.1s ease-in-out infinite; }
     @@keyframes ac-applying { 0%,100%{opacity:1} 50%{opacity:.55} }
+    /* Close-confirm countdown modal */
+    .ac-cc-back { position:fixed; inset:0; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; z-index:1100; padding:.8rem; }
+    .ac-cc { width:100%; max-width:20rem; background:var(--surface); border:1px solid var(--red); border-radius:var(--r-md); padding:1rem; text-align:center; box-shadow:var(--e2); }
+    .ac-cc-title { font-weight:700; margin-bottom:.3rem; }
+    .ac-cc-ring { font-size:2.2rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--red); margin:.4rem 0; animation:ac-cc-pulse 1s ease-in-out infinite; }
+    .ac-cc-row { display:flex; gap:.5rem; margin-top:.7rem; }
+    @@keyframes ac-cc-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+    @@media (prefers-reduced-motion:reduce) { .ac-cc-ring { animation:none; } }
     @@media (prefers-reduced-motion:reduce) { .ac-pill.applying { animation:none; } }
     .ac-pill.ac-macro.on { background:#f87171; color:#3a0b0b; }
     .ac-sel { font-size:.8rem; padding:.45rem .5rem; border-radius:var(--r-sm); border:1px solid var(--border); background:var(--surface-2); color:inherit; flex:1 1 30%; min-width:0; min-height:var(--tap); }
@@ -123,14 +147,12 @@
     .ac-gear-row { cursor:pointer; }
     .ac-gear-row .gn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .ac-gear-row .gi { color:var(--muted); font-family:ui-monospace,monospace; user-select:all; white-space:nowrap; }
-    .ac-chat { margin-top:.4rem; }
     .ac-ctabs { display:flex; flex-wrap:wrap; gap:.25rem; margin:.2rem 0 .1rem; }
     .ac-ctab { font-size:.78rem; padding:.35rem .55rem; }
     .ac-chat-log { max-height:200px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:.35rem .45rem; display:flex; flex-direction:column; gap:.1rem; margin:.2rem 0; }
     .ac-chat-line { font-size:.74rem; line-height:1.25; word-break:break-word; }
     .ac-chat-send { display:flex; gap:.3rem; }
     .ac-chat-input { flex:1; min-width:0; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-sm); color:inherit; padding:.5rem .55rem; font-size:.9rem; min-height:var(--tap); }
-    .ac-drive { margin-top:.4rem; }
     .ac-dpad { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:.35rem; max-width:230px; margin:.3rem auto .1rem; touch-action:none; }
     .ac-dbtn { display:flex; align-items:center; justify-content:center; aspect-ratio:1; font-size:1.5rem; line-height:1; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:inherit; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; cursor:pointer; }
     .ac-dbtn:active, .ac-dbtn.held { background:var(--accent); border-color:var(--accent); color:#0b1220; }
@@ -321,6 +343,7 @@ else
 
                 @if (_deckPid == c.Pid)
                 {
+                    var kHb = string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase);
                     <div class="ac-deck">
                         <div class="ac-deck-head">
                             <button class="ac-deck-back" @onclick="CloseDeck">‹ Fleet</button>
@@ -330,249 +353,246 @@ else
                             <button class="ac-deck-nav" @onclick="@(() => DeckStep(-1))" aria-label="previous client">‹</button>
                             <button class="ac-deck-nav" @onclick="@(() => DeckStep(1))" aria-label="next client">›</button>
                         </div>
-                        <div class="ac-deck-body">
-
-                @if (c.Player is { } v && v.MaxHp > 0)
-                {
-                    @Bar("HP", v.Hp, v.MaxHp, "#ef4444")
-                    @Bar("Stam", v.St, v.MaxSt, "#22c55e")
-                    @Bar("Mana", v.Mn, v.MaxMn, "#3b82f6")
-                }
-
-                <div class="ac-doing">
-                    @if (!string.IsNullOrWhiteSpace(c.BotAction)) { <span>@c.BotAction</span> }
-                    else if (!string.IsNullOrWhiteSpace(c.CurrentState)) { <span>@c.CurrentState</span> }
-                    else { <span class="ac-sub">@(c.InWorld ? "In world" : "Not in world")</span> }
-                    @if (!string.IsNullOrWhiteSpace(c.Target)) { <span class="ac-sub"> → @c.Target</span> }
-                </div>
-
-                <div class="ac-stream-bar">
-                    <button class="ac-pill @(_streaming.Contains(c.Pid) ? "on" : "")" @onclick="@(() => ToggleStream(c.Pid))">
-                        @(_streaming.Contains(c.Pid) ? "■ Stop stream" : "▶ Live view")
-                    </button>
-                </div>
-                @if (_streaming.Contains(c.Pid))
-                {
-                    @if (c.IsMinimized)
-                    {
-                        <div class="ac-stream ac-stream-min"><div class="ac-hd-ph">⤢ @c.DisplayName is minimized on the PC — restore it to stream (it can sit behind other windows, just not minimized)</div></div>
-                    }
-                    else if (Presets[PresetFor(c.Pid)].Hd)
-                    {
-                        <div id="@HdSlotId(c.Pid)" class="ac-stream"><div class="ac-hd-ph">📺 HD live — tap to enlarge</div></div>
-                    }
-                    else
-                    {
-                        <div class="ac-stream"><img src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" /></div>
-                    }
-                    <div class="ac-qsel">
-                        @for (int i = 0; i < Presets.Length; i++)
-                        {
-                            int idx = i; int pid = c.Pid;
-                            <button class="ac-pill @(PresetFor(pid) == idx ? "on" : "")" @onclick="@(() => SetPreset(pid, idx))">@Presets[idx].Label</button>
-                        }
-                        <span class="lbl" style="margin-left:auto">@DataRateText(c.Pid)</span>
-                    </div>
-                }
-
-                <div class="ac-drive">
-                    <button class="ac-gear-h" @onclick="@(() => ToggleDrive(c.Pid))">
-                        @(_showDrive.Contains(c.Pid) ? "▾" : "▸") Drive
-                    </button>
-                    @if (_showDrive.Contains(c.Pid))
-                    {
-                        <div class="ac-dpad">
-                            <span></span>
-                            <div class="ac-dbtn @(Held(c.Pid, "forward"))"
-                                 @onpointerdown="@(() => StartMove(c, "forward"))"
-                                 @onpointerup="@(() => StopMove(c, "forward"))"
-                                 @onpointerleave="@(() => StopMove(c, "forward"))"
-                                 @onpointercancel="@(() => StopMove(c, "forward"))"
-                                 @oncontextmenu:preventDefault>▲</div>
-                            <span></span>
-                            <div class="ac-dbtn @(Held(c.Pid, "left"))"
-                                 @onpointerdown="@(() => StartMove(c, "left"))"
-                                 @onpointerup="@(() => StopMove(c, "left"))"
-                                 @onpointerleave="@(() => StopMove(c, "left"))"
-                                 @onpointercancel="@(() => StopMove(c, "left"))"
-                                 @oncontextmenu:preventDefault>◀</div>
-                            <div class="ac-dbtn stop" @onclick="@(() => HardStop(c))">■</div>
-                            <div class="ac-dbtn @(Held(c.Pid, "right"))"
-                                 @onpointerdown="@(() => StartMove(c, "right"))"
-                                 @onpointerup="@(() => StopMove(c, "right"))"
-                                 @onpointerleave="@(() => StopMove(c, "right"))"
-                                 @onpointercancel="@(() => StopMove(c, "right"))"
-                                 @oncontextmenu:preventDefault>▶</div>
-                            <span></span>
-                            <div class="ac-dbtn @(Held(c.Pid, "back"))"
-                                 @onpointerdown="@(() => StartMove(c, "back"))"
-                                 @onpointerup="@(() => StopMove(c, "back"))"
-                                 @onpointerleave="@(() => StopMove(c, "back"))"
-                                 @onpointercancel="@(() => StopMove(c, "back"))"
-                                 @oncontextmenu:preventDefault>▼</div>
-                            <span></span>
+                        <div class="ac-kpi">
+                            <div class="ac-kpi-c"><div class="ac-kpi-v">@(kHb ? "—" : FmtRate(c.KillsPerHour))</div><div class="ac-kpi-l">kills/hr</div></div>
+                            <div class="ac-kpi-c"><div class="ac-kpi-v">@(kHb ? "—" : FmtRate(c.XpPerHour))</div><div class="ac-kpi-l">xp/hr</div></div>
+                            <div class="ac-kpi-c"><div class="ac-kpi-v @(!kHb && c.DeathsSession > 0 ? "warn" : "")">@(kHb ? "—" : c.DeathsSession.ToString())</div><div class="ac-kpi-l">deaths</div></div>
+                            <div class="ac-kpi-c"><div class="ac-kpi-v @(c.FreeSlots >= 0 && c.FreeSlots <= 2 ? "warn" : "")">@(c.FreeSlots < 0 ? "—" : c.FreeSlots.ToString())</div><div class="ac-kpi-l">slots</div></div>
                         </div>
-                        <div class="ac-dnote">hold to move · ◀▶ turn · ■ stop @(c.MacroRunning ? "· stop the macro first — nav & combat facing will fight you" : "")</div>
-                    }
-                </div>
-
-                @if (!string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase))
-                {
-                    <div class="ac-stats">
-                        @Stat("kills/hr", c.KillsPerHour.ToString("F0"))
-                        @Stat("kills", c.SessionKills.ToString())
-                        @Stat("last kill", Since(c.SecsSinceLastKill), StaleKill(c))
-                        @Stat("xp/hr", FmtRate(c.XpPerHour))
-                        @Stat("xp ses", FmtRate(c.XpSession))
-                        @if (c.LuminancePerHour > 0) { @Stat("lum/hr", FmtRate(c.LuminancePerHour)) }
-                        @Stat("vitae", c.VitaePct > 0 ? $"{c.VitaePct:F0}%" : "0")
-                        @Stat("deaths", c.DeathsSession > 0 ? $"{c.DeathsSession}/{c.Deaths}" : c.Deaths.ToString())
-                        @if (c.BurdenPct > 0) { @Stat("burden", $"{c.BurdenPct:F0}%", c.BurdenPct >= 100) }
-                        @if (c.FreeSlots >= 0) { @Stat("slots", c.FreeSlots.ToString(), c.FreeSlots <= 2) }
-                        @if (c.ScarabsByType is { Count: > 0 })
-                        {
-                            @foreach (var s in c.ScarabsByType)
+                        <div class="ac-subnav">
+                            @foreach (var st in DeckTabs)
                             {
-                                @Stat(s.ShortLabel, s.Count.ToString(), s.Count <= 50)
+                                string t = st;
+                                <button class="ac-subtab @(_deckTab == t ? "on" : "")" @onclick="@(() => SetDeckTab(t))">@t</button>
                             }
-                        }
-                        else if (c.Scarabs >= 0) { @Stat("scarabs", c.Scarabs.ToString(), c.Scarabs <= 50) }
-                        @if (c.Tapers >= 0) { @Stat("tapers", c.Tapers.ToString(), c.Tapers <= 50) }
-                        @if (!string.IsNullOrWhiteSpace(c.Area)) { @Stat("area", c.Area!) }
-                    </div>
-                    @if (!string.IsNullOrWhiteSpace(c.LastIssue))
-                    {
-                        <div class="ac-issue" title="most recent engine warning/error">
-                            &#9888; @c.LastIssue@(c.LastIssueAgeSec >= 0 ? $" ({Since((int)c.LastIssueAgeSec)} ago)" : "")
                         </div>
-                    }
-
-                    @if (c.Equipment is { Count: > 0 })
-                    {
-                        <div class="ac-gear">
-                            <button class="ac-gear-h" @onclick="@(() => ToggleGear(c.Pid))">
-                                @(_showGear.Contains(c.Pid) ? "▾" : "▸") Gear (@c.Equipment.Count)
-                            </button>
-                            @if (_showGear.Contains(c.Pid))
+                        <div class="ac-deck-body">
+                            @if (_deckTab == "Status")
                             {
-                                <div class="ac-gear-list">
-                                    @foreach (var it in c.Equipment)
+                                <div class="ac-pane">
+                                    @if (c.Player is { } v && v.MaxHp > 0)
                                     {
-                                        <div>
-                                            <div class="ac-gear-row" @onclick="@(() => ToggleItem(it.Id))" title="tap for appraisal">
-                                                <span class="gn">@(it.HasAppraisal ? (_showItem.Contains(it.Id) ? "▾ " : "▸ ") : "")@it.Name</span>
-                                                <span class="gi">@it.HexId</span>
-                                            </div>
-                                            @if (_showItem.Contains(it.Id) && it.HasAppraisal)
+                                        @Bar("HP", v.Hp, v.MaxHp, "#ef4444", "ruby")
+                                        @Bar("Stam", v.St, v.MaxSt, "#22c55e", "jade")
+                                        @Bar("Mana", v.Mn, v.MaxMn, "#3b82f6", "sapphire")
+                                    }
+                                    <div class="ac-doing">
+                                        @if (!string.IsNullOrWhiteSpace(c.BotAction)) { <span>@c.BotAction</span> }
+                                        else if (!string.IsNullOrWhiteSpace(c.CurrentState)) { <span>@c.CurrentState</span> }
+                                        else { <span class="ac-sub">@(c.InWorld ? "In world" : "Not in world")</span> }
+                                        @if (!string.IsNullOrWhiteSpace(c.Target)) { <span class="ac-sub"> → @c.Target</span> }
+                                    </div>
+                                    @if (!kHb)
+                                    {
+                                        <div class="ac-stats">
+                                            @Stat("kills/hr", c.KillsPerHour.ToString("F0"))
+                                            @Stat("kills", c.SessionKills.ToString())
+                                            @Stat("last kill", Since(c.SecsSinceLastKill), StaleKill(c))
+                                            @Stat("xp/hr", FmtRate(c.XpPerHour))
+                                            @Stat("xp ses", FmtRate(c.XpSession))
+                                            @if (c.LuminancePerHour > 0) { @Stat("lum/hr", FmtRate(c.LuminancePerHour)) }
+                                            @Stat("vitae", c.VitaePct > 0 ? $"{c.VitaePct:F0}%" : "0")
+                                            @Stat("deaths", c.DeathsSession > 0 ? $"{c.DeathsSession}/{c.Deaths}" : c.Deaths.ToString())
+                                            @if (c.BurdenPct > 0) { @Stat("burden", $"{c.BurdenPct:F0}%", c.BurdenPct >= 100) }
+                                            @if (c.FreeSlots >= 0) { @Stat("slots", c.FreeSlots.ToString(), c.FreeSlots <= 2) }
+                                            @if (c.ScarabsByType is { Count: > 0 })
                                             {
-                                                <AcAppraisal Item="it" />
+                                                @foreach (var s in c.ScarabsByType)
+                                                {
+                                                    @Stat(s.ShortLabel, s.Count.ToString(), s.Count <= 50)
+                                                }
+                                            }
+                                            else if (c.Scarabs >= 0) { @Stat("scarabs", c.Scarabs.ToString(), c.Scarabs <= 50) }
+                                            @if (c.Tapers >= 0) { @Stat("tapers", c.Tapers.ToString(), c.Tapers <= 50) }
+                                            @if (!string.IsNullOrWhiteSpace(c.Area)) { @Stat("area", c.Area!) }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(c.LastIssue))
+                                        {
+                                            <div class="ac-issue" title="most recent engine warning/error">
+                                                &#9888; @c.LastIssue@(c.LastIssueAgeSec >= 0 ? $" ({Since((int)c.LastIssueAgeSec)} ago)" : "")
+                                            </div>
+                                        }
+                                        @if (c.Equipment is { Count: > 0 })
+                                        {
+                                            <div class="ac-gear">
+                                                <button class="ac-gear-h" @onclick="@(() => ToggleGear(c.Pid))">
+                                                    @(_showGear.Contains(c.Pid) ? "▾" : "▸") Gear (@c.Equipment.Count)
+                                                </button>
+                                                @if (_showGear.Contains(c.Pid))
+                                                {
+                                                    <div class="ac-gear-list">
+                                                        @foreach (var it in c.Equipment)
+                                                        {
+                                                            <div>
+                                                                <div class="ac-gear-row" @onclick="@(() => ToggleItem(it.Id))" title="tap for appraisal">
+                                                                    <span class="gn">@(it.HasAppraisal ? (_showItem.Contains(it.Id) ? "▾ " : "▸ ") : "")@it.Name</span>
+                                                                    <span class="gi">@it.HexId</span>
+                                                                </div>
+                                                                @if (_showItem.Contains(it.Id) && it.HasAppraisal)
+                                                                {
+                                                                    <AcAppraisal Item="it" />
+                                                                }
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        <div class="ac-gear">
+                                            <button class="ac-gear-h ac-inv-open" @onclick="@(() => OpenInvModal(c.Pid))">
+                                                🎒 Inventory@(InvCountLabel(c.Pid)) <span class="ac-inv-hint">tap to open ▸</span>
+                                            </button>
+                                        </div>
+                                    }
+                                    <div class="ac-foot">
+                                        <span class="@(c.InWorld && c.Fps == 0 ? "ac-warn" : "")">@c.Fps fps</span>
+                                        <span class="@(c.MacroRunning && c.PluginTicksPerSec == 0 ? "ac-warn" : "")">@c.PluginTicksPerSec /s</span>
+                                        <span>up @Dur(c.UptimeSec)</span>
+                                        @if (c.AgeSec >= 12) { <span class="ac-warn">stale @c.AgeSec.ToString("F0")s</span> }
+                                        @if (kHb) { <span title="basic info only — status export off for this client">log-only</span> }
+                                    </div>
+                                </div>
+                            }
+                            else if (_deckTab == "Control")
+                            {
+                                <div class="ac-pane">
+                                    @if (c.NavProfiles is { Count: > 0 } || c.LootProfiles is { Count: > 0 } || c.MetaProfiles is { Count: > 0 })
+                                    {
+                                        <div class="ac-ctrl">
+                                            @if (c.NavProfiles is { Count: > 0 })
+                                            {
+                                                <select class="ac-sel" title="nav profile" @onchange="@(e => CmdProfile(c, "navProfile", e))">
+                                                    @for (int i = 0; i < c.NavProfiles.Count; i++)
+                                                    { <option value="@i" selected="@(i == c.SelectedNavIdx)">@Trunc(c.NavProfiles[i])</option> }
+                                                </select>
+                                            }
+                                            @if (c.LootProfiles is { Count: > 0 })
+                                            {
+                                                <select class="ac-sel" title="loot profile" @onchange="@(e => CmdProfile(c, "lootProfile", e))">
+                                                    @for (int i = 0; i < c.LootProfiles.Count; i++)
+                                                    { <option value="@i" selected="@(i == c.SelectedLootIdx)">@Trunc(c.LootProfiles[i])</option> }
+                                                </select>
+                                            }
+                                            @if (c.MetaProfiles is { Count: > 0 })
+                                            {
+                                                <select class="ac-sel" title="meta profile" @onchange="@(e => CmdProfile(c, "metaProfile", e))">
+                                                    @for (int i = 0; i < c.MetaProfiles.Count; i++)
+                                                    { <option value="@i" selected="@(i == c.SelectedMetaIdx)">@Trunc(c.MetaProfiles[i])</option> }
+                                                </select>
                                             }
                                         </div>
                                     }
+                                    <div class="ac-ctrl">
+                                        <button class="ac-pill" @onclick="@(() => SendCommand(c, "clearBusy", "true"))">clear busy</button>
+                                        <button class="ac-pill" @onclick="@(() => SendCommand(c, "forceRebuff", "true"))">force rebuff</button>
+                                        <button class="ac-pill" @onclick="@(() => SendCommand(c, "cancelRebuff", "true"))">cancel</button>
+                                        <button class="ac-pill @(EffOn(c.Pid, "hideUi", c.UiHidden) ? "on" : "") @(IsApplying(c.Pid, "hideUi") ? "applying" : "")" @onclick="@(() => SendCommand(c, "hideUi", EffOn(c.Pid, "hideUi", c.UiHidden) ? "false" : "true"))">@(EffOn(c.Pid, "hideUi", c.UiHidden) ? "Show UI" : "Hide UI")</button>
+                                        <button class="ac-pill ac-danger" @onclick="@(() => OpenCloseModal(c.Pid))">Close</button>
+                                    </div>
+                                    @if (_cmdMsg.TryGetValue(c.Pid, out var cm) && !string.IsNullOrEmpty(cm))
+                                    {
+                                        <div class="ac-cmd-msg">@cm</div>
+                                    }
                                 </div>
                             }
-                        </div>
-                    }
-
-                    <div class="ac-gear">
-                        <button class="ac-gear-h ac-inv-open" @onclick="@(() => OpenInvModal(c.Pid))">
-                            🎒 Inventory@(InvCountLabel(c.Pid)) <span class="ac-inv-hint">tap to open ▸</span>
-                        </button>
-                    </div>
-
-                    @if (_showControls)
-                    {
-                        @if (c.NavProfiles is { Count: > 0 } || c.LootProfiles is { Count: > 0 } || c.MetaProfiles is { Count: > 0 })
-                        {
-                            <div class="ac-ctrl">
-                                @if (c.NavProfiles is { Count: > 0 })
-                                {
-                                    <select class="ac-sel" title="nav profile" @onchange="@(e => CmdProfile(c, "navProfile", e))">
-                                        @for (int i = 0; i < c.NavProfiles.Count; i++)
-                                        { <option value="@i" selected="@(i == c.SelectedNavIdx)">@Trunc(c.NavProfiles[i])</option> }
-                                    </select>
-                                }
-                                @if (c.LootProfiles is { Count: > 0 })
-                                {
-                                    <select class="ac-sel" title="loot profile" @onchange="@(e => CmdProfile(c, "lootProfile", e))">
-                                        @for (int i = 0; i < c.LootProfiles.Count; i++)
-                                        { <option value="@i" selected="@(i == c.SelectedLootIdx)">@Trunc(c.LootProfiles[i])</option> }
-                                    </select>
-                                }
-                                @if (c.MetaProfiles is { Count: > 0 })
-                                {
-                                    <select class="ac-sel" title="meta profile" @onchange="@(e => CmdProfile(c, "metaProfile", e))">
-                                        @for (int i = 0; i < c.MetaProfiles.Count; i++)
-                                        { <option value="@i" selected="@(i == c.SelectedMetaIdx)">@Trunc(c.MetaProfiles[i])</option> }
-                                    </select>
-                                }
-                            </div>
-                        }
-                        <div class="ac-ctrl">
-                            <button class="ac-pill" @onclick="@(() => SendCommand(c, "clearBusy", "true"))">clear busy</button>
-                            <button class="ac-pill" @onclick="@(() => SendCommand(c, "forceRebuff", "true"))">force rebuff</button>
-                            <button class="ac-pill" @onclick="@(() => SendCommand(c, "cancelRebuff", "true"))">cancel</button>
-                            <button class="ac-pill @(EffOn(c.Pid, "hideUi", c.UiHidden) ? "on" : "") @(IsApplying(c.Pid, "hideUi") ? "applying" : "")" @onclick="@(() => SendCommand(c, "hideUi", EffOn(c.Pid, "hideUi", c.UiHidden) ? "false" : "true"))">@(EffOn(c.Pid, "hideUi", c.UiHidden) ? "Show UI" : "Hide UI")</button>
-                            @if (_closePending.Contains(c.Pid))
+                            else if (_deckTab == "Live")
                             {
-                                <button class="ac-pill ac-danger" @onclick="@(() => ConfirmClose(c))">Confirm close?</button>
+                                <div class="ac-pane">
+                                    <div class="ac-stream-bar">
+                                        <button class="ac-pill @(_streaming.Contains(c.Pid) ? "on" : "")" @onclick="@(() => ToggleStream(c.Pid))">
+                                            @(_streaming.Contains(c.Pid) ? "■ Stop stream" : "▶ Live view")
+                                        </button>
+                                    </div>
+                                    @if (_streaming.Contains(c.Pid))
+                                    {
+                                        @if (c.IsMinimized)
+                                        {
+                                            <div class="ac-stream ac-stream-min"><div class="ac-hd-ph">⤢ @c.DisplayName is minimized on the PC — restore it to stream (it can sit behind other windows, just not minimized)</div></div>
+                                        }
+                                        else if (Presets[PresetFor(c.Pid)].Hd)
+                                        {
+                                            <div id="@HdSlotId(c.Pid)" class="ac-stream"><div class="ac-hd-ph">📺 HD live — tap to enlarge</div></div>
+                                        }
+                                        else
+                                        {
+                                            <div class="ac-stream"><img src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" /></div>
+                                        }
+                                        <div class="ac-qsel">
+                                            @for (int i = 0; i < Presets.Length; i++)
+                                            {
+                                                int idx = i; int pid = c.Pid;
+                                                <button class="ac-pill @(PresetFor(pid) == idx ? "on" : "")" @onclick="@(() => SetPreset(pid, idx))">@Presets[idx].Label</button>
+                                            }
+                                            <span class="lbl" style="margin-left:auto">@DataRateText(c.Pid)</span>
+                                        </div>
+                                    }
+                                    <div class="ac-dpad">
+                                        <span></span>
+                                        <div class="ac-dbtn @(Held(c.Pid, "forward"))"
+                                             @onpointerdown="@(() => StartMove(c, "forward"))"
+                                             @onpointerup="@(() => StopMove(c, "forward"))"
+                                             @onpointerleave="@(() => StopMove(c, "forward"))"
+                                             @onpointercancel="@(() => StopMove(c, "forward"))"
+                                             @oncontextmenu:preventDefault>▲</div>
+                                        <span></span>
+                                        <div class="ac-dbtn @(Held(c.Pid, "left"))"
+                                             @onpointerdown="@(() => StartMove(c, "left"))"
+                                             @onpointerup="@(() => StopMove(c, "left"))"
+                                             @onpointerleave="@(() => StopMove(c, "left"))"
+                                             @onpointercancel="@(() => StopMove(c, "left"))"
+                                             @oncontextmenu:preventDefault>◀</div>
+                                        <div class="ac-dbtn stop" @onclick="@(() => HardStop(c))">■</div>
+                                        <div class="ac-dbtn @(Held(c.Pid, "right"))"
+                                             @onpointerdown="@(() => StartMove(c, "right"))"
+                                             @onpointerup="@(() => StopMove(c, "right"))"
+                                             @onpointerleave="@(() => StopMove(c, "right"))"
+                                             @onpointercancel="@(() => StopMove(c, "right"))"
+                                             @oncontextmenu:preventDefault>▶</div>
+                                        <span></span>
+                                        <div class="ac-dbtn @(Held(c.Pid, "back"))"
+                                             @onpointerdown="@(() => StartMove(c, "back"))"
+                                             @onpointerup="@(() => StopMove(c, "back"))"
+                                             @onpointerleave="@(() => StopMove(c, "back"))"
+                                             @onpointercancel="@(() => StopMove(c, "back"))"
+                                             @oncontextmenu:preventDefault>▼</div>
+                                        <span></span>
+                                    </div>
+                                    <div class="ac-dnote">hold to move · ◀▶ turn · ■ stop @(c.MacroRunning ? "· stop the macro first — nav & combat facing will fight you" : "")</div>
+                                </div>
                             }
                             else
                             {
-                                <button class="ac-pill" @onclick="@(() => ArmClose(c.Pid))">Close</button>
+                                <div class="ac-pane">
+                                    <div class="ac-ctabs">
+                                        @foreach (var tab in ChatTabs)
+                                        {
+                                            string t = tab; int pid = c.Pid;
+                                            <button class="ac-pill ac-ctab @(ChatTabFor(pid) == t ? "on" : "")" @onclick="@(() => SetChatTab(pid, t))">@t</button>
+                                        }
+                                    </div>
+                                    <div class="ac-chat-log">
+                                        @{
+                                            var curTab = ChatTabFor(c.Pid);
+                                            var lines = (c.RecentChat ?? new()).Where(l => curTab == "All" || l.Route == curTab).ToList();
+                                        }
+                                        @if (lines.Count > 0)
+                                        {
+                                            @for (int i = lines.Count - 1; i >= 0; i--)
+                                            {
+                                                <div class="ac-chat-line" style="color:@lines[i].Color">@lines[i].Text</div>
+                                            }
+                                        }
+                                        else { <div class="ac-sub">@(c.RecentChat is { Count: > 0 } ? $"no {curTab} messages" : "no chat captured yet")</div> }
+                                    </div>
+                                    <div class="ac-chat-send">
+                                        <input class="ac-chat-input" placeholder="say, or /tell /f /command…"
+                                               value="@GetDraft(c.Pid)"
+                                               @oninput="@(e => _chatDraft[c.Pid] = e.Value?.ToString() ?? string.Empty)"
+                                               @onkeydown="@(e => ChatKeyDown(e, c))" />
+                                        <button class="ac-pill" @onclick="@(() => SendChat(c))">Send</button>
+                                    </div>
+                                </div>
                             }
-                        </div>
-                        @if (_cmdMsg.TryGetValue(c.Pid, out var cm) && !string.IsNullOrEmpty(cm))
-                        {
-                            <div class="ac-cmd-msg">@cm</div>
-                        }
-                    }
-
-                    <div class="ac-chat">
-                        <button class="ac-gear-h" @onclick="@(() => ToggleChat(c.Pid))">
-                            @(_showChat.Contains(c.Pid) ? "▾" : "▸") Chat@(c.RecentChat is { Count: > 0 } ? $" ({c.RecentChat.Count})" : "")
-                        </button>
-                        @if (_showChat.Contains(c.Pid))
-                        {
-                            <div class="ac-ctabs">
-                                @foreach (var tab in ChatTabs)
-                                {
-                                    string t = tab; int pid = c.Pid;
-                                    <button class="ac-pill ac-ctab @(ChatTabFor(pid) == t ? "on" : "")" @onclick="@(() => SetChatTab(pid, t))">@t</button>
-                                }
-                            </div>
-                            <div class="ac-chat-log">
-                                @{
-                                    var curTab = ChatTabFor(c.Pid);
-                                    var lines = (c.RecentChat ?? new()).Where(l => curTab == "All" || l.Route == curTab).ToList();
-                                }
-                                @if (lines.Count > 0)
-                                {
-                                    @for (int i = lines.Count - 1; i >= 0; i--)
-                                    {
-                                        <div class="ac-chat-line" style="color:@lines[i].Color">@lines[i].Text</div>
-                                    }
-                                }
-                                else { <div class="ac-sub">@(c.RecentChat is { Count: > 0 } ? $"no {curTab} messages" : "no chat captured yet")</div> }
-                            </div>
-                            <div class="ac-chat-send">
-                                <input class="ac-chat-input" placeholder="say, or /tell /f /command…"
-                                       value="@GetDraft(c.Pid)"
-                                       @oninput="@(e => _chatDraft[c.Pid] = e.Value?.ToString() ?? string.Empty)"
-                                       @onkeydown="@(e => ChatKeyDown(e, c))" />
-                                <button class="ac-pill" @onclick="@(() => SendChat(c))">Send</button>
-                            </div>
-                        }
-                    </div>
-                }
-
-                <div class="ac-foot">
-                    <span class="@(c.InWorld && c.Fps == 0 ? "ac-warn" : "")">@c.Fps fps</span>
-                    <span class="@(c.MacroRunning && c.PluginTicksPerSec == 0 ? "ac-warn" : "")">@c.PluginTicksPerSec /s</span>
-                    <span>up @Dur(c.UptimeSec)</span>
-                    @if (c.AgeSec >= 12) { <span class="ac-warn">stale @c.AgeSec.ToString("F0")s</span> }
-                    @if (string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase)) { <span title="basic info only — status export off for this client">log-only</span> }
-                </div>
                         </div>
                         <div class="ac-deck-bar">
                             <button class="ac-pill ac-macro @(EffOn(c.Pid, "macro", c.MacroRunning) ? "on" : "") @(IsApplying(c.Pid, "macro") ? "applying" : "")" @onclick="@(() => SendCommand(c, "macro", EffOn(c.Pid, "macro", c.MacroRunning) ? "false" : "true"))">@(EffOn(c.Pid, "macro", c.MacroRunning) ? "■" : "▶")</button>
@@ -580,7 +600,7 @@ else
                             {
                                 <button class="ac-pill @(EffOn(c.Pid, t.Action, t.On) ? "on" : "") @(IsApplying(c.Pid, t.Action) ? "applying" : "")" @onclick="@(() => SendCommand(c, t.Action, EffOn(c.Pid, t.Action, t.On) ? "false" : "true"))">@t.Label</button>
                             }
-                            <button class="ac-pill @(_showControls ? "on" : "")" @onclick="@(() => _showControls = !_showControls)">More</button>
+                            <button class="ac-pill @(_deckTab == "Control" ? "on" : "")" @onclick="@(() => SetDeckTab("Control"))">More</button>
                         </div>
                     </div>
                 }
@@ -671,6 +691,24 @@ else
             }
             <div class="ac-invm-foot">
                 <button class="ac-pill" @onclick="@(() => LoadInventoryAsync(_invModalPid))" disabled="@_invLoading.Contains(_invModalPid)">@(_invLoading.Contains(_invModalPid) ? "…" : "↻ Refresh")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Close-confirm countdown (above inventory 1000 / deck 900) ───────────────────────── *@
+@if (_closeModalPid != 0)
+{
+    var cc = _result?.Payload?.Clients?.FirstOrDefault(x => x.Pid == _closeModalPid);
+    <div class="ac-cc-back" @onclick="CancelCloseModal">
+        <div class="ac-cc" @onclick:stopPropagation="true">
+            <div class="ac-cc-title">Close @(cc?.DisplayName ?? "client")?</div>
+            <div class="ac-sub">This shuts down the game client.</div>
+            <div class="ac-cc-ring">@_closeCountdown</div>
+            <div class="ac-sub">auto-cancels in @_closeCountdown s</div>
+            <div class="ac-cc-row">
+                <button class="ac-pill" style="flex:1" @onclick="CancelCloseModal">Cancel</button>
+                <button class="ac-pill ac-danger" style="flex:1" @onclick="@(() => ConfirmCloseModal(cc!))" disabled="@(cc is null)">Close now</button>
             </div>
         </div>
     </div>
@@ -768,8 +806,7 @@ else
     private async Task ToggleStream(int pid)
     {
         if (!_streaming.Add(pid)) { _streaming.Remove(pid); return; }
-        _showDrive.Add(pid);   // open the Drive d-pad alongside the stream so the arrows are right there
-        await MeasureFrameAsync(pid);
+        await MeasureFrameAsync(pid);   // the d-pad now always renders on the Live tab alongside the stream
     }
 
     // ── Inline HD video (native AVSampleBufferDisplayLayer overlay pinned to the HD slot) ──
@@ -786,8 +823,8 @@ else
     {
         var live = _result?.Payload?.Clients;
         foreach (int pid in _streaming)
-            if (Presets[PresetFor(pid)].Hd && _deckPid == pid && (live?.Any(c => c.Pid == pid && !c.IsMinimized) ?? false))
-                return pid;   // only while THIS client's deck is open (the HD slot lives in the deck) and not minimized
+            if (Presets[PresetFor(pid)].Hd && _deckPid == pid && _deckTab == "Live" && (live?.Any(c => c.Pid == pid && !c.IsMinimized) ?? false))
+                return pid;   // only while THIS client's deck is open ON THE LIVE TAB (the HD slot lives there) and not minimized
         return null;
     }
 
@@ -883,26 +920,65 @@ else
         foreach (var pid in pids) SendMove(pid, "stop", false);
     }
 
-    private readonly HashSet<int> _closePending = new();         // pids armed for a confirm-close
-    private async Task ArmClose(int pid)
+    // Close-confirm countdown modal (replaces the old 2-tap arm→confirm). A destructive action must
+    // never fire on a walked-away dialog, so the countdown AUTO-CANCELS at 0 — it never auto-closes.
+    private int _closeModalPid;                 // pid whose modal is open (0 = none)
+    private int _closeCountdown;                // seconds remaining
+    private CancellationTokenSource? _closeCts;
+
+    private void OpenCloseModal(int pid)
     {
-        _closePending.Add(pid);
+        _closeModalPid = pid; _closeCountdown = 5;
+        _closeCts?.Cancel(); _closeCts = new();
         StateHasChanged();
-        try { await Task.Delay(4000); } catch { }
-        if (_closePending.Remove(pid) && !_disposed) await InvokeAsync(StateHasChanged);
+        _ = CloseCountdownLoop(_closeCts.Token);
     }
-    private async Task ConfirmClose(AcClientStatus c)
+    private async Task CloseCountdownLoop(CancellationToken ct)
     {
-        _closePending.Remove(c.Pid);
-        await SendCommand(c, "closeClient", "true");
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                _closeCountdown--;
+                if (_closeCountdown <= 0) { CancelCloseModal(); return; }   // auto-cancel, never auto-fire
+                if (!_disposed) await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
     }
+    private void CancelCloseModal() { _closeCts?.Cancel(); _closeModalPid = 0; if (!_disposed) _ = InvokeAsync(StateHasChanged); }
+    private async Task ConfirmCloseModal(AcClientStatus c) { _closeCts?.Cancel(); _closeModalPid = 0; await SendCommand(c, "closeClient", "true"); }
 
     // ── Fleet overview (collapsible glance-rows + roll-up state filter) ──
     private string _fleetFilter = "";                  // "" = all; otherwise a state string
     private int _deckPid;                               // open drill-in deck client (0 = fleet overview)
 
-    private void OpenDeck(int pid) { _deckPid = pid; _showControls = false; StateHasChanged(); }
-    private void CloseDeck() { _deckPid = 0; StateHasChanged(); }
+    private void OpenDeck(int pid) { _deckPid = pid; _deckTab = "Status"; StateHasChanged(); }
+    private void CloseDeck() { ReleaseDeckHeld(); _deckPid = 0; StateHasChanged(); }
+
+    // Sub-tabs (deck-scoped; one deck open at a time). Reset to Status on every open/page so paging
+    // never lands on a stale "Live" tab and silently re-mounts the HD overlay on an arbitrary client.
+    private string _deckTab = "Status";
+    private static readonly string[] DeckTabs = { "Status", "Control", "Live", "Chat" };
+    private async Task SetDeckTab(string tab)
+    {
+        if (_deckTab == tab) return;
+        ReleaseDeckHeld();          // release the d-pad BEFORE the Live panel (and d-pad) unmounts
+        _deckTab = tab;
+        await InvokeAsync(StateHasChanged);   // → OnAfterRenderAsync → ReconcileHdOverlay (hides/shows HD)
+    }
+
+    // Release any held d-pad button for the open deck pid (it's about to leave the DOM via tab-switch /
+    // paging / close). Mirrors OnSuspended: tiny lock scope, SendMove(stop) OUTSIDE the lock; the plugin
+    // dead-man's switch backstops a dropped stop POST.
+    private void ReleaseDeckHeld()
+    {
+        if (_deckPid == 0) return;
+        bool wasHeld;
+        lock (_moveLock) wasHeld = _held.Remove(_deckPid);
+        if (wasHeld) SendMove(_deckPid, "stop", false);
+    }
 
     // Clients in the same order the fleet list shows them (trouble-first), for the deck's ‹ › paging.
     private List<AcClientStatus> OrderedClients()
@@ -920,9 +996,11 @@ else
     {
         var list = OrderedClients();
         if (list.Count == 0) return;
+        ReleaseDeckHeld();                                          // release the OLD pid's d-pad before paging
         int i = list.FindIndex(c => c.Pid == _deckPid);
         int n = i < 0 ? 0 : ((i + dir) % list.Count + list.Count) % list.Count;   // wrap around
         _deckPid = list[n].Pid;
+        _deckTab = "Status";
         StateHasChanged();
     }
 
@@ -1009,9 +1087,6 @@ else
     private string InvCountLabel(int pid)
         => _invByPid.TryGetValue(pid, out var inv) && inv.ItemCount > 0 ? $" ({inv.ItemCount})" : "";
 
-    private readonly HashSet<int> _showChat = new();             // pids whose chat panel is open
-    private void ToggleChat(int pid) { if (!_showChat.Add(pid)) _showChat.Remove(pid); }
-
     // Chat tabs — the standard AC tab set, routed by message-type (AcChatLine.Route). The user's
     // exact in-game tab config isn't readable from the client, so this mirrors the default tabs.
     private static readonly string[] ChatTabs = { "All", "Chat", "Combat", "Channels", "System", "Rynth", "Other" };
@@ -1031,8 +1106,6 @@ else
     }
 
     // ── Movement d-pad (hold-to-move) ────────────────────────────────────────
-    private readonly HashSet<int> _showDrive = new();            // pids whose d-pad is open
-    private void ToggleDrive(int pid) { if (!_showDrive.Add(pid)) _showDrive.Remove(pid); }
     // pid → the SET of directions currently held. A set (not one slot) so you can run AND steer at the
     // same time, with each held direction independently kept alive + released. _moveLock guards _held /
     // _moveChain because the keepalive timer thread touches them alongside the renderer thread.
@@ -1172,7 +1245,7 @@ else
                 // button held); easy on cellular data when you're just glancing at the list. After a
                 // failed/stalled poll, retry soon so one bad fetch over Tailscale can't compound into a
                 // long gap (the ~20s symptom: an 8s stall + a full 4s wait used to stack up).
-                bool engaged = _streaming.Count > 0 || _showChat.Count > 0;   // streaming, or a chat panel open
+                bool engaged = _streaming.Count > 0 || _deckPid != 0;   // streaming, or a deck open (actively watching one client)
                 lock (_moveLock) engaged |= _held.Count > 0;                  // or a movement button held
                 int delayMs = !ok ? 1000 : engaged ? 1000 : 3000;
                 await Task.Delay(delayMs, ct);
@@ -1259,11 +1332,11 @@ else
         await RefreshOnceAsync(_cts?.Token ?? CancellationToken.None);
     }
 
-    private static RenderFragment Bar(string label, uint cur, uint max, string color) => __builder =>
+    private static RenderFragment Bar(string label, uint cur, uint max, string color, string gem = "") => __builder =>
     {
         int pct = max > 0 ? (int)Math.Clamp(Math.Round(cur * 100.0 / max), 0, 100) : 0;
         <div class="ac-vlabel"><span>@label</span><span>@cur/@max</span></div>
-        <div class="ac-bar"><span style="width:@pct%;background:@color"></span></div>
+        <div class="ac-bar @(gem.Length > 0 ? "gem gem-" + gem : "")"><span style="width:@pct%;background:@color"></span></div>
     };
 
     private static RenderFragment Stat(string label, string value, bool warn = false) => __builder =>
@@ -1420,6 +1493,7 @@ else
         // Tear down the inline HD overlay (native video) + its rect tracker.
         if (_hdShownPid != null) { HdController.Hide(); try { _ = JS.InvokeVoidAsync("rynthHd.stopTrack"); } catch { } _hdShownPid = null; }
         _hdRef?.Dispose(); _hdRef = null;
+        _closeCts?.Cancel();
         StreamLifecycle.Resumed -= OnResumed;
         StreamLifecycle.Suspended -= OnSuspended;
         _cts?.Cancel();

@@ -105,6 +105,24 @@ window.rynthBeep = (function () {
   };
 })();
 
+// Map a tap on the live-stream <img> (object-fit:contain) to normalized (u,v) within the actual frame
+// content, accounting for letterbox bars. Returns [-1,-1] when the tap landed on a bar (outside the frame).
+window.rynthTap = {
+  normalize(imgId, clientX, clientY) {
+    const img = document.getElementById(imgId);
+    if (!img) return [-1, -1];
+    const r = img.getBoundingClientRect();
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    if (!nw || !nh || r.width <= 0 || r.height <= 0) return [-1, -1];
+    const scale = Math.min(r.width / nw, r.height / nh);   // object-fit:contain
+    const cw = nw * scale, ch = nh * scale;                // displayed content size
+    const ox = r.left + (r.width - cw) / 2, oy = r.top + (r.height - ch) / 2;   // content origin (centered)
+    const u = (clientX - ox) / cw, v = (clientY - oy) / ch;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return [-1, -1]; // tapped a letterbox bar
+    return [u, v];
+  }
+};
+
 // Chat-log scroll helper. nearBottom is read from live DOM metrics (not stale C# state) so auto-follow
 // only kicks in when the reader is already at the newest line; a reader scrolled up into history is left alone.
 window.rynthScroll = {

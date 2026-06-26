@@ -68,6 +68,8 @@
     .ac-stream { margin:.25rem 0 .45rem; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#000; aspect-ratio:16/10; }
     .ac-stream img, .ac-stream video { width:100%; height:100%; object-fit:contain; display:block; background:#000; }
     .ac-hd-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#5b6b86; font-size:.8rem; text-align:center; padding:.6rem; }
+    .ac-stream.armed { box-shadow:0 0 0 2px var(--accent); }
+    .ac-stream.armed img { cursor:crosshair; }
     .ac-stream-min { background:var(--surface-2); }
     .ac-stream-min .ac-hd-ph { color:var(--state-warn); }
     .ac-qsel { display:flex; gap:.3rem; align-items:center; flex-wrap:wrap; margin:.2rem 0 .6rem; padding:.4rem .5rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
@@ -877,6 +879,10 @@ else
                                         <button class="ac-pill @(_streaming.Contains(c.Pid) ? "on" : "")" @onclick="@(() => ToggleStream(c.Pid))">
                                             @(_streaming.Contains(c.Pid) ? "■ Stop stream" : "▶ Live view")
                                         </button>
+                                        @if (_streaming.Contains(c.Pid) && !c.IsMinimized && !Presets[PresetFor(c.Pid)].Hd)
+                                        {
+                                            <button class="ac-pill @(_clickArmed ? "on" : "")" @onclick="@(() => _clickArmed = !_clickArmed)" title="tap the live view to click in the game">👆 @(_clickArmed ? "Tap-to-click ON" : "Tap-to-click")</button>
+                                        }
                                     </div>
                                     @if (_streaming.Contains(c.Pid))
                                     {
@@ -890,7 +896,13 @@ else
                                         }
                                         else
                                         {
-                                            <div class="ac-stream"><img src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" /></div>
+                                            <div class="ac-stream @(_clickArmed ? "armed" : "")">
+                                                <img id="@StreamImgId(c.Pid)" src="@StreamSrc(c.Pid)" alt="live view of @c.DisplayName" @onclick="@(e => StreamTap(c.Pid, e))" />
+                                            </div>
+                                            @if (_clickArmed)
+                                            {
+                                                <div class="ac-sub" style="text-align:center;margin-top:-.3rem">👆 tap the view to click in-game</div>
+                                            }
                                         }
                                         <div class="ac-qsel">
                                             @for (int i = 0; i < Presets.Length; i++)
@@ -1326,6 +1338,27 @@ else
     {
         if (!_streaming.Add(pid)) { _streaming.Remove(pid); return; }
         await MeasureFrameAsync(pid);   // the d-pad now always renders on the Live tab alongside the stream
+    }
+
+    // ── Tap-to-click (remote mouse on the live stream) ──
+    // Opt-in per deck: when armed, a tap on the MJPEG view PostMessages a click to the acclient window at
+    // that exact point (agent-side, no cursor hijack). Off by default so viewing taps never touch the game.
+    private bool _clickArmed;
+    private static string StreamImgId(int pid) => $"ac-stream-{pid}";
+
+    private async Task StreamTap(int pid, Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        if (!_clickArmed || !_streaming.Contains(pid)) return;
+        try
+        {
+            // JS maps the tap to normalized frame coords (object-fit:contain letterbox aware); [-1] = a bar.
+            var uv = await JS.InvokeAsync<double[]>("rynthTap.normalize", StreamImgId(pid), e.ClientX, e.ClientY);
+            if (uv is not { Length: >= 2 } || uv[0] < 0) return;
+            await Status.ClickAsync(_url, _token, pid, uv[0], uv[1], "left", _cts?.Token ?? CancellationToken.None);
+            _cmdMsg[pid] = "✓ click";
+            StateHasChanged(); _ = ClearMsgLater(pid);
+        }
+        catch { }
     }
 
     // ── Inline HD video (native AVSampleBufferDisplayLayer overlay pinned to the HD slot) ──
@@ -1792,6 +1825,7 @@ else
     {
         _settingsOpen = false; _settingsValues = null; _settingsError = null; _settingsSearch = "";
         _setPending.Clear(); _setPendingAt.Clear(); _settingsGroupsOpen.Clear();
+        _clickArmed = false;   // each deck starts with remote-click disarmed (safety)
     }
 
     // ── Fleet overview (collapsible glance-rows + roll-up state filter) ──

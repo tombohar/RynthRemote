@@ -79,6 +79,10 @@ public interface IAcStatusClient
     /// The producer clamps/validates; never throws for network problems — returns a Fail result instead.
     Task<AcCommandResult> SetSettingAsync(string? baseUrl, string? token, int pid, string key, object value, CancellationToken ct = default);
 
+    /// Sends a mouse click at normalized (u,v) of the stream/client area (POST /command action=click).
+    /// The agent PostMessages it to the acclient window. Never throws — returns a Fail result instead.
+    Task<AcCommandResult> ClickAsync(string? baseUrl, string? token, int pid, double u, double v, string button, CancellationToken ct = default);
+
     /// POSTs a control command (toggle/profile/utility) to the agent for one client.
     /// Never throws for network problems — returns a Fail result instead.
     Task<AcCommandResult> PostCommandAsync(string? baseUrl, string? token, int pid, string action, string value, CancellationToken ct = default);
@@ -338,6 +342,13 @@ public sealed class AcStatusClient : IAcStatusClient
         };
         string payload = "{\"key\":" + JsonSerializer.Serialize(key) + ",\"value\":" + vJson + "}";
         return PostCommandAsync(baseUrl, token, pid, "setSetting", payload, ct);
+    }
+
+    public Task<AcCommandResult> ClickAsync(string? baseUrl, string? token, int pid, double u, double v, string button, CancellationToken ct = default)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        string payload = "{\"u\":" + u.ToString("0.#####", ci) + ",\"v\":" + v.ToString("0.#####", ci) + ",\"button\":" + JsonSerializer.Serialize(button) + "}";
+        return PostCommandAsync(baseUrl, token, pid, "click", payload, ct);
     }
 
     public async Task<AcInventoryResult> GetInventoryAsync(string? baseUrl, string? token, int pid, CancellationToken ct = default)

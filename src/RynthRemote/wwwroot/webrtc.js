@@ -84,3 +84,13 @@ window.rynthHd = {
     this._trackRaf = 0; this._trackRef = null;
   },
 };
+
+// Chat-log scroll helper. nearBottom is read from live DOM metrics (not stale C# state) so auto-follow
+// only kicks in when the reader is already at the newest line; a reader scrolled up into history is left alone.
+window.rynthScroll = {
+  toBottom(id) { const el = document.getElementById(id); if (el) el.scrollTop = el.scrollHeight; },
+  nearBottom(id, slackPx) {
+    const el = document.getElementById(id); if (!el) return true;
+    return (el.scrollHeight - el.scrollTop - el.clientHeight) <= (slackPx || 48);
+  }
+};

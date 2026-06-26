@@ -154,8 +154,14 @@
     .ac-chat-send { display:flex; gap:.3rem; }
     .ac-chat-input { flex:1; min-width:0; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-sm); color:inherit; padding:.5rem .55rem; font-size:.9rem; min-height:var(--tap); }
     .ac-dpad { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:.35rem; max-width:230px; margin:.3rem auto .1rem; touch-action:none; }
-    .ac-dbtn { display:flex; align-items:center; justify-content:center; aspect-ratio:1; font-size:1.5rem; line-height:1; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:inherit; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; cursor:pointer; }
-    .ac-dbtn:active, .ac-dbtn.held { background:var(--accent); border-color:var(--accent); color:#0b1220; }
+    .ac-dbtn { position:relative; display:flex; align-items:center; justify-content:center; aspect-ratio:1; font-size:1.5rem; line-height:1; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:inherit; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; cursor:pointer; transition:transform .07s ease, box-shadow .07s ease; }
+    /* held/firing = depressed key + bright inner ring + outward gold halo (one-shot transform/shadow, no animation) */
+    .ac-dbtn:active, .ac-dbtn.held {
+        background:radial-gradient(circle at 50% 38%, var(--accent-bright), var(--accent) 60%, var(--accent-deep));
+        border-color:var(--accent-bright); color:var(--accent-ink); transform:scale(.94); z-index:1;
+        box-shadow:inset 0 2px 5px rgba(0,0,0,.45), inset 0 0 0 2px var(--accent-bright), 0 0 0 3px rgba(217,164,65,.45), 0 0 14px 2px rgba(217,164,65,.55);
+    }
+    @@media (prefers-reduced-motion:reduce) { .ac-dbtn:active, .ac-dbtn.held { transform:none; } }
     .ac-dbtn.stop { font-size:1.05rem; color:var(--amber); }
     .ac-dnote { font-size:.7rem; color:var(--muted); text-align:center; }
     .ac-appr { font-size:.7rem; margin:.15rem 0 .35rem .6rem; padding-left:.5rem; border-left:2px solid var(--border); display:flex; flex-direction:column; gap:.15rem; }
@@ -184,6 +190,32 @@
     .ac-run-h .rh-dur { font-size:.78rem; color:var(--muted); min-width:3.4rem; text-align:right; font-variant-numeric:tabular-nums; }
     .ac-run .ac-stats { padding:0 .7rem; margin-top:.1rem; }
     .ac-run .ac-foot { padding:.15rem .7rem .6rem; }
+    /* Archive = parchment ledger (read-only "game talking"); scoped under .ac-runs.parch so the shared
+       .ac-stat/.ac-foot/.ac-badge used in the dark deck are never globally repainted. */
+    .ac-runs.parch { font-family:Georgia,'Times New Roman',serif; }
+    .ac-runs.parch .ac-run { background:linear-gradient(180deg,var(--pch-bg-1),var(--pch-bg-2)); border:2px solid var(--pch-edge); color:var(--pch-ink); box-shadow:0 1px 0 #2a1d0e, 0 4px 14px rgba(0,0,0,.35); }
+    .ac-runs.parch .ac-run.live { border-color:var(--accent-deep); box-shadow:0 0 0 1px var(--pch-gold), 0 4px 14px rgba(0,0,0,.4); }
+    .ac-runs.parch .ac-run-h { background:linear-gradient(180deg,#6b4a24,#4a3014); color:#f1e3c0; border-bottom:2px solid var(--pch-edge); }
+    .ac-runs.parch .rh-exp, .ac-runs.parch .rh-when, .ac-runs.parch .rh-kl, .ac-runs.parch .rh-dur { color:#d8c08c; }
+    .ac-runs.parch .rh-who { color:#f1e3c0; }
+    .ac-runs.parch .rh-k { color:var(--pch-gold); }
+    .ac-runs.parch .ac-run.live .ac-badge { background:var(--accent)!important; color:var(--accent-ink); }
+    .ac-runs.parch .ac-stats { background:var(--pch-panel); border-top:2px solid var(--pch-edge); padding-top:.4rem; }
+    .ac-runs.parch .ac-stat { background:#e6d3a4; border:1px solid var(--pch-rule); }
+    .ac-runs.parch .ac-stat .sv { color:var(--pch-ink); }
+    .ac-runs.parch .ac-stat .sv.warn { color:var(--pch-accent); }
+    .ac-runs.parch .ac-stat .sl { color:var(--pch-ink-2); }
+    .ac-runs.parch .ac-foot { background:var(--pch-panel); color:var(--pch-ink-2); border-top:1px dashed var(--pch-rule); font-style:italic; }
+    /* First-run welcome (dark operator chrome — this is the REMOTE talking, not a game surface) */
+    .rr-welcome { border-color:var(--accent-deep); box-shadow:var(--e1); }
+    .rr-w-h { display:flex; gap:.6rem; align-items:center; margin-bottom:.5rem; }
+    .rr-w-logo { font-size:1.8rem; color:var(--accent); line-height:1; }
+    .rr-w-sub { margin:.1rem 0 0; color:var(--muted); font-size:.8rem; }
+    .rr-w-explain { font-size:.86rem; color:var(--text-2); margin:.2rem 0 .6rem; line-height:1.45; }
+    .rr-w-steps { display:flex; flex-direction:column; gap:.25rem; margin:.2rem 0 .7rem; }
+    .rr-w-steps span { font-size:.8rem; color:var(--text-2); border-left:2px solid var(--accent-deep); padding-left:.5rem; }
+    .rr-w-help { display:block; font-size:.74rem; color:var(--muted); margin-top:.1rem; line-height:1.35; }
+    .rr-w-opt { font-size:.7rem; color:var(--muted); font-weight:400; }
 </style>
 
 <div class="card-head">
@@ -202,22 +234,42 @@
 
 @if (_showConfig || string.IsNullOrWhiteSpace(_url))
 {
-    <div class="card-r mb">
-        <h3 style="margin-top:0">RynthCore StatusAgent</h3>
-        <p class="muted" style="font-size:.82rem;margin-top:0">
-            URL of your StatusAgent's pull endpoint, e.g. <code>http://your-pc:8740/status</code>
-            (over Tailscale/LAN). Leave the token blank unless you set <code>ServeToken</code>.
-        </p>
+    bool firstRun = string.IsNullOrWhiteSpace(_url);   // FIRST statement = C# code context (no @)
+    <div class="card-r mb @(firstRun ? "rr-welcome" : "")">
+        @if (firstRun)
+        {
+            <div class="rr-w-h"><span class="rr-w-logo">⚜</span><div><h3 style="margin:0">Welcome to RynthRemote</h3><p class="rr-w-sub">Your pocket console for the fleet.</p></div></div>
+            <p class="rr-w-explain">
+                RynthRemote watches and controls your Asheron's Call clients through the
+                <b>RynthCore StatusAgent</b> running on your PC — over <b>Tailscale</b> (anywhere) or your <b>home Wi-Fi</b>.
+                Point it at the agent once and your characters, vitals, and controls show up here.
+            </p>
+            <div class="rr-w-steps">
+                <span>1 · Start RynthCore + the StatusAgent on your PC</span>
+                <span>2 · Copy the status URL it prints on launch</span>
+                <span>3 · Save — you're connected</span>
+            </div>
+        }
+        else
+        {
+            <h3 style="margin-top:0">RynthCore StatusAgent</h3>
+            <p class="muted" style="font-size:.82rem;margin-top:0">
+                URL of your StatusAgent's pull endpoint, e.g. <code>http://your-pc:8740/status</code>
+                (over Tailscale/LAN). Leave the token blank unless you set <code>ServeToken</code>.
+            </p>
+        }
         <div class="field">
             <label>Status URL</label>
-            <input @bind="_urlEdit" placeholder="http://your-pc:8740/status" />
+            <input @bind="_urlEdit" placeholder="http://your-pc:8740/status" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            @if (firstRun) { <span class="rr-w-help">The StatusAgent prints this on launch. Over Tailscale use the PC's tailnet name, e.g. <code>http://workshop:8740/status</code>.</span> }
         </div>
         <div class="field">
-            <label>Token (optional)</label>
-            <input @bind="_tokenEdit" placeholder="bearer token, if any" />
+            <label>Token <span class="rr-w-opt">(optional)</span></label>
+            <input @bind="_tokenEdit" placeholder="bearer token, if any" autocapitalize="off" autocorrect="off" spellcheck="false" />
+            @if (firstRun) { <span class="rr-w-help">Leave blank unless you set <code>ServeToken</code> on the agent.</span> }
         </div>
         <div class="flex" style="gap:.5rem;margin-top:.5rem">
-            <button class="btn-r" @onclick="SaveConfig">Save</button>
+            <button class="btn-r" @onclick="SaveConfig">@(firstRun ? "Connect" : "Save")</button>
             @if (_savedConfig) { <span class="badge-r green">saved</span> }
         </div>
     </div>
@@ -248,7 +300,7 @@
     }
     else
     {
-        <div class="ac-runs">
+        <div class="ac-runs parch">
             @foreach (var r in _runs)
             {
                 bool open = _expandedRuns.Contains(r.Key);
@@ -570,16 +622,16 @@ else
                                             <button class="ac-pill ac-ctab @(ChatTabFor(pid) == t ? "on" : "")" @onclick="@(() => SetChatTab(pid, t))">@t</button>
                                         }
                                     </div>
-                                    <div class="ac-chat-log">
+                                    <div class="ac-chat-log" id="ac-chat-log">
                                         @{
                                             var curTab = ChatTabFor(c.Pid);
                                             var lines = (c.RecentChat ?? new()).Where(l => curTab == "All" || l.Route == curTab).ToList();
                                         }
                                         @if (lines.Count > 0)
                                         {
-                                            @for (int i = lines.Count - 1; i >= 0; i--)
+                                            @foreach (var ln in lines)
                                             {
-                                                <div class="ac-chat-line" style="color:@lines[i].Color">@lines[i].Text</div>
+                                                <div class="ac-chat-line" style="color:@ln.Color">@ln.Text</div>
                                             }
                                         }
                                         else { <div class="ac-sub">@(c.RecentChat is { Count: > 0 } ? $"no {curTab} messages" : "no chat captured yet")</div> }
@@ -886,6 +938,18 @@ else
     {
         if (_disposed) return;
         await ReconcileHdOverlay();   // pin / unpin the native HD overlay to match the chosen preset
+        // Chat auto-follow: snap to newest when the Chat tab opens; on live re-renders only follow if the
+        // reader is already near the bottom (read live from the DOM), so scrolling up into history isn't yanked.
+        if (_deckPid != 0 && _deckTab == "Chat")
+        {
+            bool force = _chatJustOpened; _chatJustOpened = false;
+            try
+            {
+                bool stick = force || await JS.InvokeAsync<bool>("rynthScroll.nearBottom", "ac-chat-log", 48);
+                if (stick) await JS.InvokeVoidAsync("rynthScroll.toBottom", "ac-chat-log");
+            }
+            catch { }   // a render can fire before the element exists (tab transition)
+        }
     }
 
     private void OnResumed()
@@ -960,11 +1024,13 @@ else
     // Sub-tabs (deck-scoped; one deck open at a time). Reset to Status on every open/page so paging
     // never lands on a stale "Live" tab and silently re-mounts the HD overlay on an arbitrary client.
     private string _deckTab = "Status";
+    private bool _chatJustOpened;                // snap the chat log to the newest line when the Chat tab opens
     private static readonly string[] DeckTabs = { "Status", "Control", "Live", "Chat" };
     private async Task SetDeckTab(string tab)
     {
         if (_deckTab == tab) return;
         ReleaseDeckHeld();          // release the d-pad BEFORE the Live panel (and d-pad) unmounts
+        if (tab == "Chat") _chatJustOpened = true;
         _deckTab = tab;
         await InvokeAsync(StateHasChanged);   // → OnAfterRenderAsync → ReconcileHdOverlay (hides/shows HD)
     }

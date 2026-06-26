@@ -13,6 +13,14 @@
       "category": "utilities",
       "versions": [
         {
+          "version": "1.0.31",
+          "date": "2026-06-26",
+          "localizedDescription": "Automated build 1.0.31.",
+          "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.31/RynthRemote.ipa",
+          "size": 5798363,
+          "minOSVersion": "15.0"
+        },
+        {
           "version": "1.0.30",
           "date": "2026-06-26",
           "localizedDescription": "Automated build 1.0.30.",
@@ -245,11 +253,11 @@
           "minOSVersion": "15.0"
         }
       ],
-      "version": "1.0.30",
+      "version": "1.0.31",
       "versionDate": "2026-06-26",
-      "versionDescription": "Automated build 1.0.30.",
-      "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.30/RynthRemote.ipa",
-      "size": 5794665
+      "versionDescription": "Automated build 1.0.31.",
+      "downloadURL": "https://github.com/tombohar/RynthRemote/releases/download/v1.0.31/RynthRemote.ipa",
+      "size": 5798363
     }
   ],
   "news": []

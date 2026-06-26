@@ -29,6 +29,17 @@
     .ac-rowkpi .ac-rowkpil { font-weight:400; font-size:.7rem; color:var(--muted); margin-left:.1rem; }
     .ac-rowstale { font-size:.7rem; white-space:nowrap; }
     .ac-rowchev { color:var(--muted); font-size:.95rem; width:1rem; text-align:center; flex:none; }
+    /* Drill-in deck (redesign Phase 2b): full-screen focus view of one client + pinned control bar */
+    .ac-deck { position:fixed; inset:0; z-index:900; display:flex; flex-direction:column; background:var(--bg); }
+    .ac-deck-head { display:flex; align-items:center; gap:.5rem; padding:max(env(safe-area-inset-top,0px),47px) .7rem .5rem; border-bottom:1px solid var(--border); background:var(--surface); }
+    .ac-deck-back { background:none; border:none; color:var(--accent-bright); font-size:.85rem; cursor:pointer; min-height:40px; padding:0 .2rem; white-space:nowrap; }
+    .ac-deck-name { font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ac-deck-pos { font-size:.72rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+    .ac-deck-nav { background:var(--surface-2); border:1px solid var(--border); color:var(--text); border-radius:var(--r-sm); min-width:42px; min-height:42px; cursor:pointer; font-size:1.1rem; }
+    .ac-deck-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:.7rem .8rem; }
+    .ac-deck-bar { display:flex; flex-wrap:wrap; gap:.3rem; align-items:stretch; padding:.4rem .6rem calc(.4rem + max(env(safe-area-inset-bottom,0px),10px)); border-top:1px solid var(--border); background:var(--surface); }
+    .ac-deck-bar .ac-pill { font-size:.76rem; padding:.4rem .4rem; min-height:42px; flex:1 1 0; min-width:0; }
+    .ac-deck-bar .ac-macro { flex:0 0 auto; padding:.4rem .7rem; }
     .ac-head { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
     .ac-name { font-weight:700; }
     .ac-sub { color:var(--muted); font-size:.78rem; }
@@ -297,7 +308,7 @@ else
         @foreach (var c in FilterClients(clients).OrderByDescending(c => !c.Healthy).ThenBy(c => c.Character))
         {
             <div class="ac-card @(c.Healthy ? "" : "bad")" @key="c.Pid">
-                <div class="ac-rowhead" @onclick="@(() => ToggleExpand(c.Pid))">
+                <div class="ac-rowhead" @onclick="@(() => OpenDeck(c.Pid))">
                     <span class="ac-gem" style="background:@StateColor(c.State)" title="@c.State"></span>
                     <div class="ac-rowmain">
                         <div class="ac-name">@c.DisplayName</div>
@@ -305,11 +316,21 @@ else
                     </div>
                     @if (c.KillsPerHour > 0) { <span class="ac-rowkpi">@FmtRate(c.KillsPerHour)<span class="ac-rowkpil">k/hr</span></span> }
                     @if (c.AgeSec >= 12) { <span class="ac-warn ac-rowstale">stale</span> }
-                    <span class="ac-rowchev">@(IsExpanded(c.Pid) ? "▾" : "▸")</span>
+                    <span class="ac-rowchev">›</span>
                 </div>
 
-                @if (IsExpanded(c.Pid))
+                @if (_deckPid == c.Pid)
                 {
+                    <div class="ac-deck">
+                        <div class="ac-deck-head">
+                            <button class="ac-deck-back" @onclick="CloseDeck">‹ Fleet</button>
+                            <span class="ac-gem" style="background:@StateColor(c.State)" title="@c.State"></span>
+                            <span class="ac-deck-name">@c.DisplayName</span>
+                            <span class="ac-deck-pos">@DeckPos(c.Pid)</span>
+                            <button class="ac-deck-nav" @onclick="@(() => DeckStep(-1))" aria-label="previous client">‹</button>
+                            <button class="ac-deck-nav" @onclick="@(() => DeckStep(1))" aria-label="next client">›</button>
+                        </div>
+                        <div class="ac-deck-body">
 
                 @if (c.Player is { } v && v.MaxHp > 0)
                 {
@@ -461,17 +482,6 @@ else
 
                     @if (_showControls)
                     {
-                        <div class="ac-ctrl">
-                            <button class="ac-pill ac-macro @(EffOn(c.Pid, "macro", c.MacroRunning) ? "on" : "") @(IsApplying(c.Pid, "macro") ? "applying" : "")"
-                                    @onclick="@(() => SendCommand(c, "macro", EffOn(c.Pid, "macro", c.MacroRunning) ? "false" : "true"))">
-                                @(EffOn(c.Pid, "macro", c.MacroRunning) ? "■ Stop" : "▶ Start")
-                            </button>
-                            @foreach (var t in Toggles(c))
-                            {
-                                <button class="ac-pill @(EffOn(c.Pid, t.Action, t.On) ? "on" : "") @(IsApplying(c.Pid, t.Action) ? "applying" : "")"
-                                        @onclick="@(() => SendCommand(c, t.Action, EffOn(c.Pid, t.Action, t.On) ? "false" : "true"))">@t.Label</button>
-                            }
-                        </div>
                         @if (c.NavProfiles is { Count: > 0 } || c.LootProfiles is { Count: > 0 } || c.MetaProfiles is { Count: > 0 })
                         {
                             <div class="ac-ctrl">
@@ -563,6 +573,16 @@ else
                     @if (c.AgeSec >= 12) { <span class="ac-warn">stale @c.AgeSec.ToString("F0")s</span> }
                     @if (string.Equals(c.Source, "heartbeat-log", StringComparison.OrdinalIgnoreCase)) { <span title="basic info only — status export off for this client">log-only</span> }
                 </div>
+                        </div>
+                        <div class="ac-deck-bar">
+                            <button class="ac-pill ac-macro @(EffOn(c.Pid, "macro", c.MacroRunning) ? "on" : "") @(IsApplying(c.Pid, "macro") ? "applying" : "")" @onclick="@(() => SendCommand(c, "macro", EffOn(c.Pid, "macro", c.MacroRunning) ? "false" : "true"))">@(EffOn(c.Pid, "macro", c.MacroRunning) ? "■" : "▶")</button>
+                            @foreach (var t in Toggles(c))
+                            {
+                                <button class="ac-pill @(EffOn(c.Pid, t.Action, t.On) ? "on" : "") @(IsApplying(c.Pid, t.Action) ? "applying" : "")" @onclick="@(() => SendCommand(c, t.Action, EffOn(c.Pid, t.Action, t.On) ? "false" : "true"))">@t.Label</button>
+                            }
+                            <button class="ac-pill @(_showControls ? "on" : "")" @onclick="@(() => _showControls = !_showControls)">More</button>
+                        </div>
+                    </div>
                 }
             </div>
         }
@@ -766,8 +786,8 @@ else
     {
         var live = _result?.Payload?.Clients;
         foreach (int pid in _streaming)
-            if (Presets[PresetFor(pid)].Hd && (live?.Any(c => c.Pid == pid && !c.IsMinimized) ?? false))
-                return pid;   // skip a minimized client — its window can't be captured
+            if (Presets[PresetFor(pid)].Hd && _deckPid == pid && (live?.Any(c => c.Pid == pid && !c.IsMinimized) ?? false))
+                return pid;   // only while THIS client's deck is open (the HD slot lives in the deck) and not minimized
         return null;
     }
 
@@ -879,11 +899,32 @@ else
 
     // ── Fleet overview (collapsible glance-rows + roll-up state filter) ──
     private string _fleetFilter = "";                  // "" = all; otherwise a state string
-    private readonly HashSet<int> _expandedPids = new();
+    private int _deckPid;                               // open drill-in deck client (0 = fleet overview)
 
-    private void ToggleExpand(int pid) { if (!_expandedPids.Add(pid)) _expandedPids.Remove(pid); StateHasChanged(); }
-    private bool IsExpanded(int pid)
-        => _expandedPids.Contains(pid) || (_result?.Payload?.Clients?.Count ?? 0) <= 1;   // a lone client auto-expands
+    private void OpenDeck(int pid) { _deckPid = pid; _showControls = false; StateHasChanged(); }
+    private void CloseDeck() { _deckPid = 0; StateHasChanged(); }
+
+    // Clients in the same order the fleet list shows them (trouble-first), for the deck's ‹ › paging.
+    private List<AcClientStatus> OrderedClients()
+    {
+        var clients = _result?.Payload?.Clients;
+        return clients == null ? new() : FilterClients(clients).OrderByDescending(c => !c.Healthy).ThenBy(c => c.Character).ToList();
+    }
+    private string DeckPos(int pid)
+    {
+        var list = OrderedClients();
+        int i = list.FindIndex(c => c.Pid == pid);
+        return i < 0 ? "" : $"{i + 1}/{list.Count}";
+    }
+    private void DeckStep(int dir)
+    {
+        var list = OrderedClients();
+        if (list.Count == 0) return;
+        int i = list.FindIndex(c => c.Pid == _deckPid);
+        int n = i < 0 ? 0 : ((i + dir) % list.Count + list.Count) % list.Count;   // wrap around
+        _deckPid = list[n].Pid;
+        StateHasChanged();
+    }
 
     private void SetFleetFilter(string key)
     {

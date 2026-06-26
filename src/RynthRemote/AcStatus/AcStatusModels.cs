@@ -85,6 +85,9 @@ public sealed class AcClientStatus
     public int FreeSlots { get; set; } = -1;
     /// True when the in-game RynthCore/RynthAi UI is hidden (remote "Hide UI").
     public bool UiHidden { get; set; }
+    /// True when the client's game window is minimized on the PC — its stream can't be captured
+    /// (a minimized D3D9 window has no surface), so the app shows a "restore on PC" placeholder.
+    public bool IsMinimized { get; set; }
     /// Total scarab casting components in inventory; -1 = unknown.
     public int Scarabs { get; set; } = -1;
     /// Total prismatic tapers in inventory; -1 = unknown.

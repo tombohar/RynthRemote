@@ -40,7 +40,9 @@
     .ac-stream-bar { margin:.35rem 0 .25rem; }
     .ac-stream { margin:.25rem 0 .45rem; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#000; aspect-ratio:16/10; }
     .ac-stream img, .ac-stream video { width:100%; height:100%; object-fit:contain; display:block; background:#000; }
-    .ac-hd-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#5b6b86; font-size:.8rem; }
+    .ac-hd-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#5b6b86; font-size:.8rem; text-align:center; padding:.6rem; }
+    .ac-stream-min { background:var(--surface-2); }
+    .ac-stream-min .ac-hd-ph { color:var(--state-warn); }
     .ac-qsel { display:flex; gap:.3rem; align-items:center; flex-wrap:wrap; margin:.2rem 0 .6rem; padding:.4rem .5rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
     .ac-qsel .lbl { font-size:.72rem; color:var(--muted); }
     .ac-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(56px,1fr)); gap:.3rem; margin:.4rem 0 .25rem; }
@@ -296,7 +298,7 @@ else
                     <span class="ac-gem" style="background:@StateColor(c.State)" title="@c.State"></span>
                     <div class="ac-rowmain">
                         <div class="ac-name">@c.DisplayName</div>
-                        <div class="ac-rowsub">@c.State@(string.IsNullOrWhiteSpace(c.Server) ? "" : " · " + c.Server)</div>
+                        <div class="ac-rowsub">@c.State@(c.IsMinimized ? " · minimized" : "")@(string.IsNullOrWhiteSpace(c.Server) ? "" : " · " + c.Server)</div>
                     </div>
                     @if (c.KillsPerHour > 0) { <span class="ac-rowkpi">@FmtRate(c.KillsPerHour)<span class="ac-rowkpil">k/hr</span></span> }
                     @if (c.AgeSec >= 12) { <span class="ac-warn ac-rowstale">stale</span> }
@@ -327,7 +329,11 @@ else
                 </div>
                 @if (_streaming.Contains(c.Pid))
                 {
-                    @if (Presets[PresetFor(c.Pid)].Hd)
+                    @if (c.IsMinimized)
+                    {
+                        <div class="ac-stream ac-stream-min"><div class="ac-hd-ph">⤢ @c.DisplayName is minimized on the PC — restore it to stream (it can sit behind other windows, just not minimized)</div></div>
+                    }
+                    else if (Presets[PresetFor(c.Pid)].Hd)
                     {
                         <div id="@HdSlotId(c.Pid)" class="ac-stream"><div class="ac-hd-ph">📺 HD live — tap to enlarge</div></div>
                     }
@@ -757,8 +763,8 @@ else
     {
         var live = _result?.Payload?.Clients;
         foreach (int pid in _streaming)
-            if (Presets[PresetFor(pid)].Hd && (live?.Any(c => c.Pid == pid) ?? false))
-                return pid;
+            if (Presets[PresetFor(pid)].Hd && (live?.Any(c => c.Pid == pid && !c.IsMinimized) ?? false))
+                return pid;   // skip a minimized client — its window can't be captured
         return null;
     }
 
